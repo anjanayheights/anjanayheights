@@ -1,10 +1,40 @@
+import { FormEvent, useState } from 'react';
 import { motion } from 'motion/react';
 
 export default function Contact() {
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    try {
+      const response = await fetch('/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams(formData as any).toString(),
+      });
+
+      if (response.ok) {
+        form.reset();
+        setSubmitted(true);
+      } else {
+        alert('Unable to submit your request. Please try again.');
+      }
+    } catch {
+      alert('Unable to submit your request. Please try again.');
+    }
+  };
+
   return (
     <section id="contact" className="py-20 bg-white border-t border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-0 border border-gray-200">
+
           <div className="p-10 md:p-16 bg-[#F9F9F7] flex flex-col justify-center">
             <div className="text-[10px] text-[#C2A36B] font-bold uppercase tracking-widest mb-4">
               Get In Touch
@@ -73,79 +103,93 @@ export default function Contact() {
               Request a Call Back
             </h3>
 
-            <form
-              name="callback"
-              method="POST"
-              data-netlify="true"
-              className="space-y-6"
-            >
-              <input type="hidden" name="form-name" value="callback" />
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  required
-                  className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors"
-                  placeholder="John Doe"
-                />
+            {submitted ? (
+              <div className="border border-[#C2A36B] bg-[#F9F9F7] p-8 text-center">
+                <h4 className="text-xl font-serif text-[#1A365D] mb-3">
+                  Thank You!
+                </h4>
+                <p className="text-sm text-gray-600">
+                  Your request has been received. Our property consultant
+                  will contact you shortly.
+                </p>
               </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  name="phone"
-                  required
-                  className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors"
-                  placeholder="+91 xxxxx xxxxx"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
-                  Interested In
-                </label>
-                <select
-                  name="interest"
-                  required
-                  className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors"
-                >
-                  <option>Residential Property</option>
-                  <option>Commercial Property</option>
-                  <option>Healthcare / Hospital Project</option>
-                  <option>Residential Plots</option>
-                  <option>Other Investment</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
-                  Message (Optional)
-                </label>
-                <textarea
-                  name="message"
-                  rows={4}
-                  className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors resize-none"
-                  placeholder="I am looking for..."
-                ></textarea>
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-[#1A365D] text-white px-8 py-4 text-xs font-bold uppercase tracking-widest hover:bg-[#2D3748] transition-colors"
+            ) : (
+              <form
+                name="callback"
+                method="POST"
+                data-netlify="true"
+                onSubmit={handleSubmit}
+                className="space-y-6"
               >
-                Submit Request
-              </button>
-            </form>
+                <input type="hidden" name="form-name" value="callback" />
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    required
+                    className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors"
+                    placeholder="John Doe"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone"
+                    required
+                    className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors"
+                    placeholder="+91 xxxxx xxxxx"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
+                    Interested In
+                  </label>
+                  <select
+                    name="interest"
+                    required
+                    className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors"
+                  >
+                    <option>Residential Property</option>
+                    <option>Commercial Property</option>
+                    <option>Healthcare / Hospital Project</option>
+                    <option>Residential Plots</option>
+                    <option>Other Investment</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">
+                    Message (Optional)
+                  </label>
+                  <textarea
+                    name="message"
+                    rows={4}
+                    className="w-full px-4 py-3 bg-[#F9F9F7] border border-gray-200 focus:outline-none focus:border-[#C2A36B] text-sm text-[#1A365D] transition-colors resize-none"
+                    placeholder="I am looking for..."
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-[#1A365D] text-white px-8 py-4 text-xs font-bold uppercase tracking-widest hover:bg-[#2D3748] transition-colors"
+                >
+                  Submit Request
+                </button>
+              </form>
+            )}
           </motion.div>
+
         </div>
       </div>
     </section>
   );
-}
+                }
