@@ -8,7 +8,7 @@
 <body>
   <div id="root"></div>
 
-  <!-- Netlify Forms detection for React -->
+  <!-- Netlify Forms detection for Property Lead -->
   <form
     name="property-lead"
     method="POST"
@@ -26,6 +26,22 @@
     <input name="budget" />
     <input name="timeline" />
     <textarea name="requirement"></textarea>
+  </form>
+
+  <!-- Netlify Forms detection for Request a Call Back -->
+  <form
+    name="callback"
+    method="POST"
+    data-netlify="true"
+    netlify-honeypot="bot-field"
+    hidden
+  >
+    <input type="hidden" name="form-name" value="callback" />
+    <input name="bot-field" />
+    <input name="name" />
+    <input name="phone" />
+    <input name="interest" />
+    <textarea name="message"></textarea>
   </form>
 
   <script type="module" src="/src/main.tsx"></script>
