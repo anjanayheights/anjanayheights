@@ -7,6 +7,27 @@
 </head>
 <body>
   <div id="root"></div>
+
+  <!-- Netlify Forms detection for React -->
+  <form
+    name="property-lead"
+    method="POST"
+    data-netlify="true"
+    netlify-honeypot="bot-field"
+    hidden
+  >
+    <input type="hidden" name="form-name" value="property-lead" />
+    <input name="bot-field" />
+    <input name="name" />
+    <input name="phone" />
+    <input name="lead_type" />
+    <input name="property_type" />
+    <input name="location" />
+    <input name="budget" />
+    <input name="timeline" />
+    <textarea name="requirement"></textarea>
+  </form>
+
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
