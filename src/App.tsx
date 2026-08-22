@@ -1,3 +1,4 @@
+import LeadDashboard from './components/LeadDashboard';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -15,6 +16,10 @@ import Footer from './components/Footer';
 import WhatsAppButton from './components/WhatsAppButton';
 
 export default function App() {
+  if (window.location.pathname === '/admin') {
+    return <LeadDashboard />;
+  }
+
   return (
     <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]">
       <Navbar />
