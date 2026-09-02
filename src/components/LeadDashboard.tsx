@@ -24,6 +24,7 @@ type LeadMeta = {
 
 const STATUSES = ['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
 const META_KEY = 'anjanay-heights-lead-meta-v1';
+const DEFAULT_META: LeadMeta = { status: 'New', followUp: '', note: '' };
 
 function readMeta(): Record<string, LeadMeta> {
   try {
@@ -42,33 +43,70 @@ export default function LeadDashboard() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [meta, setMeta] = useState<Record<string, LeadMeta>>({});
+  const [savingId, setSavingId] = useState('');
 
   useEffect(() => setMeta(readMeta()), []);
 
-  function saveMeta(next: Record<string, LeadMeta>) {
+  function cacheMeta(next: Record<string, LeadMeta>) {
     setMeta(next);
     localStorage.setItem(META_KEY, JSON.stringify(next));
   }
 
   function getMeta(id: string): LeadMeta {
-    return meta[id] || { status: 'New', followUp: '', note: '' };
+    return meta[id] || DEFAULT_META;
+  }
+
+  async function saveLeadMeta(id: string, nextMeta: LeadMeta) {
+    const next = { ...meta, [id]: nextMeta };
+    cacheMeta(next);
+    setSavingId(id);
+    try {
+      const response = await fetch('/.netlify/functions/lead-meta', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${password}`,
+        },
+        body: JSON.stringify({ leadId: id, meta: nextMeta }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Cloud save failed');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? `${err.message}. Local copy kept.` : 'Cloud save failed. Local copy kept.');
+    } finally {
+      setSavingId('');
+    }
   }
 
   function updateLeadMeta(id: string, patch: Partial<LeadMeta>) {
     const current = getMeta(id);
-    saveMeta({ ...meta, [id]: { ...current, ...patch } });
+    void saveLeadMeta(id, { ...current, ...patch });
   }
 
   async function loadLeads() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/.netlify/functions/leads', {
-        headers: { Authorization: `Bearer ${password}` },
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Unable to load leads');
-      setLeads(result.leads || []);
+      const [leadsResponse, metaResponse] = await Promise.all([
+        fetch('/.netlify/functions/leads', { headers: { Authorization: `Bearer ${password}` } }),
+        fetch('/.netlify/functions/lead-meta', { headers: { Authorization: `Bearer ${password}` } }),
+      ]);
+
+      const leadsResult = await leadsResponse.json();
+      if (!leadsResponse.ok) throw new Error(leadsResult.error || 'Unable to load leads');
+
+      let serverMeta: Record<string, LeadMeta> = {};
+      if (metaResponse.ok) {
+        const metaResult = await metaResponse.json();
+        serverMeta = metaResult.meta || {};
+      }
+
+      const localMeta = readMeta();
+      const mergedMeta = { ...localMeta, ...serverMeta };
+      setLeads(leadsResult.leads || []);
+      cacheMeta(mergedMeta);
       setLoggedIn(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load leads');
@@ -83,7 +121,7 @@ export default function LeadDashboard() {
       setError('Please enter your dashboard password.');
       return;
     }
-    loadLeads();
+    void loadLeads();
   }
 
   const filteredLeads = useMemo(() => leads.filter((lead) => {
@@ -127,8 +165,10 @@ export default function LeadDashboard() {
             <h1 className="text-3xl font-bold text-[#1A365D]">Anjanay Heights</h1>
             <p className="text-gray-500 mt-1">Lead Management Dashboard</p>
           </div>
-          <button onClick={loadLeads} className="bg-[#1A365D] text-white px-5 py-3 rounded-xl font-semibold">Refresh Leads</button>
+          <button onClick={() => void loadLeads()} className="bg-[#1A365D] text-white px-5 py-3 rounded-xl font-semibold">Refresh Leads</button>
         </div>
+
+        {error && <div className="bg-red-50 text-red-700 rounded-xl px-4 py-3 mb-5 text-sm">{error}</div>}
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
           <div className="bg-white rounded-2xl p-4 shadow"><p className="text-gray-500 text-sm">Total</p><p className="text-2xl font-bold text-[#1A365D]">{leads.length}</p></div>
@@ -187,7 +227,7 @@ export default function LeadDashboard() {
                       <input type="date" value={current.followUp} onChange={(e) => updateLeadMeta(lead.id, { followUp: e.target.value })} className="mt-1 w-full border rounded-lg px-3 py-2" />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">NOTE</label>
+                      <label className="text-xs font-semibold text-gray-500">NOTE {savingId === lead.id ? '(Saving...)' : ''}</label>
                       <input value={current.note} onChange={(e) => updateLeadMeta(lead.id, { note: e.target.value })} placeholder="Call result / next action" className="mt-1 w-full border rounded-lg px-3 py-2" />
                     </div>
                   </div>
