@@ -34,6 +34,17 @@ function readMeta(): Record<string, LeadMeta> {
   }
 }
 
+function buildWhatsAppMessage(lead: Lead) {
+  const name = lead.name || 'there';
+  const details = [
+    lead.property_type && `Property: ${lead.property_type}`,
+    lead.location && `Location: ${lead.location}`,
+    lead.budget && `Budget: ${lead.budget}`,
+  ].filter(Boolean).join('\n');
+
+  return `Hi ${name}, thank you for your enquiry with Anjanay Heights.\n\n${details ? `${details}\n\n` : ''}I would be happy to help you with suitable property options. Please let me know a convenient time to speak.\n\nRegards,\nAnjanay Heights`;
+}
+
 export default function LeadDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [password, setPassword] = useState('');
@@ -192,6 +203,9 @@ export default function LeadDashboard() {
           <div className="space-y-4">
             {filteredLeads.map((lead) => {
               const current = getMeta(lead.id);
+              const whatsappUrl = lead.phone
+                ? `https://wa.me/${lead.phone.replace(/\D/g, '')}?text=${encodeURIComponent(buildWhatsAppMessage(lead))}`
+                : '';
               return (
                 <div key={lead.id} className="bg-white rounded-2xl shadow p-5">
                   <div className="flex flex-col lg:flex-row lg:justify-between gap-4">
@@ -201,7 +215,7 @@ export default function LeadDashboard() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {lead.phone && <a href={`tel:${lead.phone}`} className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold">Call</a>}
-                      {lead.phone && <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold">WhatsApp</a>}
+                      {whatsappUrl && <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="bg-green-500 text-white px-4 py-2 rounded-lg font-semibold">WhatsApp Follow-up</a>}
                     </div>
                   </div>
 
