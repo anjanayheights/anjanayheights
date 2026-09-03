@@ -4,6 +4,7 @@ import PropertyInventory from './components/PropertyInventory';
 import LeadMatches from './components/LeadMatches';
 import AdminTools from './components/AdminTools';
 import FollowupCenter from './components/FollowupCenter';
+import SalesPipeline from './components/SalesPipeline';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -26,6 +27,7 @@ export default function App() {
   if (window.location.pathname === '/admin/matches') return <LeadMatches />;
   if (window.location.pathname === '/admin/tools') return <AdminTools />;
   if (window.location.pathname === '/admin/followups') return <FollowupCenter />;
+  if (window.location.pathname === '/admin/pipeline') return <SalesPipeline />;
 
   return (
     <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]">
