@@ -1,7 +1,6 @@
 import { head, put } from '@vercel/blob';
 
 type LeadMeta = { status: string; followUp: string; note: string };
-
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const META_PATH = 'crm/lead-meta.json';
 
@@ -11,9 +10,16 @@ const json = (status: number, body: unknown) =>
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
-function authorized(request: Request) {
+function getHeader(request: any, name: string) {
+  const headers = request?.headers;
+  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
+  if (headers && typeof headers === 'object') return headers[name.toLowerCase()] || headers[name] || '';
+  return '';
+}
+
+function authorized(request: any) {
   const expected = process.env.DASHBOARD_PASSWORD || '';
-  return Boolean(expected && request.headers.get('authorization') === `Bearer ${expected}`);
+  return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`);
 }
 
 async function readMeta(): Promise<Record<string, LeadMeta>> {
@@ -39,14 +45,16 @@ async function writeMeta(data: Record<string, LeadMeta>) {
   });
 }
 
-export default async function handler(request: Request) {
+export default async function handler(request: any) {
   if (!authorized(request)) return json(401, { error: 'Unauthorized' });
 
   try {
     if (request.method === 'GET') return json(200, { meta: await readMeta() });
 
     if (request.method === 'POST') {
-      const body = await request.json().catch(() => ({}));
+      const body = request?.body && typeof request.body === 'object'
+        ? request.body
+        : (typeof request?.json === 'function' ? await request.json().catch(() => ({})) : {});
       const leadId = String(body.leadId || '').trim();
       if (!leadId) return json(400, { error: 'leadId is required' });
 
