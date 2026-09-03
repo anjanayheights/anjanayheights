@@ -15,6 +15,27 @@ function send(response: any, status: number, body: unknown) {
   return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
 }
 
+function parseBody(request: any) {
+  const body = request?.body;
+  if (body && typeof body === 'object' && !Buffer.isBuffer(body)) return body;
+  if (Buffer.isBuffer(body)) return parseEncodedBody(body.toString('utf8'), getHeader(request, 'content-type'));
+  if (typeof body === 'string') return parseEncodedBody(body, getHeader(request, 'content-type'));
+  return {};
+}
+
+function parseEncodedBody(raw: string, contentType: string) {
+  if (!raw) return {};
+  if (contentType.includes('application/json')) {
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return Object.fromEntries(new URLSearchParams(raw).entries());
+}
+
 export default async function handler(request: any, response: any) {
   if (request.method === 'GET') {
     if (!dashboardAuthorized(request)) return send(response, 401, { error: 'Unauthorized' });
@@ -39,7 +60,7 @@ export default async function handler(request: any, response: any) {
 
   if (request.method === 'POST') {
     try {
-      const body = request.body && typeof request.body === 'object' ? request.body : {};
+      const body = parseBody(request);
 
       if (String(body['bot-field'] || '').trim()) return send(response, 200, { ok: true });
 
