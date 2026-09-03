@@ -4,17 +4,9 @@ type LeadMeta = { status: string; followUp: string; note: string };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const META_PATH = 'crm/lead-meta.json';
 
-const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-  });
-
 function getHeader(request: any, name: string) {
-  const headers = request?.headers;
-  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
-  if (headers && typeof headers === 'object') return headers[name.toLowerCase()] || headers[name] || '';
-  return '';
+  const value = request?.headers?.[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] || '' : value || '';
 }
 
 function authorized(request: any) {
@@ -22,14 +14,18 @@ function authorized(request: any) {
   return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`);
 }
 
+function send(response: any, status: number, body: unknown) {
+  return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
+}
+
 async function readMeta(): Promise<Record<string, LeadMeta>> {
   try {
     const info = await head(META_PATH);
-    const response = await fetch(info.url, {
+    const result = await fetch(info.url, {
       headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
     });
-    if (!response.ok) return {};
-    const data = await response.json();
+    if (!result.ok) return {};
+    const data = await result.json();
     return data && typeof data === 'object' ? data : {};
   } catch {
     return {};
@@ -45,18 +41,16 @@ async function writeMeta(data: Record<string, LeadMeta>) {
   });
 }
 
-export default async function handler(request: any) {
-  if (!authorized(request)) return json(401, { error: 'Unauthorized' });
+export default async function handler(request: any, response: any) {
+  if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
 
   try {
-    if (request.method === 'GET') return json(200, { meta: await readMeta() });
+    if (request.method === 'GET') return send(response, 200, { meta: await readMeta() });
 
     if (request.method === 'POST') {
-      const body = request?.body && typeof request.body === 'object'
-        ? request.body
-        : (typeof request?.json === 'function' ? await request.json().catch(() => ({})) : {});
+      const body = request.body && typeof request.body === 'object' ? request.body : {};
       const leadId = String(body.leadId || '').trim();
-      if (!leadId) return json(400, { error: 'leadId is required' });
+      if (!leadId) return send(response, 400, { error: 'leadId is required' });
 
       const all = await readMeta();
       const current = all[leadId] || { status: 'New', followUp: '', note: '' };
@@ -70,12 +64,12 @@ export default async function handler(request: any) {
 
       all[leadId] = normalized;
       await writeMeta(all);
-      return json(200, { ok: true, leadId, meta: normalized });
+      return send(response, 200, { ok: true, leadId, meta: normalized });
     }
 
-    return json(405, { error: 'Method not allowed' });
+    return send(response, 405, { error: 'Method not allowed' });
   } catch (error) {
     console.error('lead-meta error', error);
-    return json(500, { error: 'Unable to access CRM storage.' });
+    return send(response, 500, { error: 'Unable to access CRM storage.' });
   }
 }
