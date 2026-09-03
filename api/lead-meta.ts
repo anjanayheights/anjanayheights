@@ -1,6 +1,24 @@
 import { head, put } from '@vercel/blob';
 
-type LeadMeta = { status: string; followUp: string; note: string; priority: string; nextAction: string; propertyType: string; location: string; budget: string; timeline: string };
+type LeadMeta = {
+  status: string;
+  followUp: string;
+  note: string;
+  priority: string;
+  nextAction: string;
+  propertyType: string;
+  location: string;
+  budget: string;
+  timeline: string;
+  dealValue?: string;
+  customerOffer?: string;
+  expectedClosingDate?: string;
+  closingProbability?: string;
+  negotiationNotes?: string;
+  closedDate?: string;
+  closedProperty?: string;
+  finalRemarks?: string;
+};
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const PRIORITIES = new Set(['Hot', 'Warm', 'Cold']);
 const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action']);
@@ -25,6 +43,7 @@ async function readMeta(): Promise<Record<string, LeadMeta>> {
     const info = await head(META_PATH);
     const result = await fetch(info.url, {
       headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
+      cache: 'no-store',
     });
     if (!result.ok) return {};
     const data = await result.json();
@@ -56,11 +75,12 @@ export default async function handler(request: any, response: any) {
 
       const all = await readMeta();
       const current = all[leadId] || { status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call', propertyType: '', location: '', budget: '', timeline: '' };
-      const incoming = body.meta || {};
+      const incoming = body.meta && typeof body.meta === 'object' ? body.meta : {};
       const status = String(incoming.status ?? current.status);
       const priority = String(incoming.priority ?? current.priority);
       const nextAction = String(incoming.nextAction ?? current.nextAction);
       const normalized: LeadMeta = {
+        ...current,
         status: STATUSES.has(status) ? status : 'New',
         followUp: String(incoming.followUp ?? current.followUp ?? '').slice(0, 10),
         note: String(incoming.note ?? current.note ?? '').slice(0, 2000),
@@ -71,6 +91,11 @@ export default async function handler(request: any, response: any) {
         budget: String(incoming.budget ?? current.budget ?? '').slice(0, 100),
         timeline: String(incoming.timeline ?? current.timeline ?? '').slice(0, 100),
       };
+
+      const optionalFields = ['dealValue', 'customerOffer', 'expectedClosingDate', 'closingProbability', 'negotiationNotes', 'closedDate', 'closedProperty', 'finalRemarks'];
+      for (const field of optionalFields) {
+        if (incoming[field] !== undefined) normalized[field as keyof LeadMeta] = String(incoming[field] ?? '').slice(0, 2000) as never;
+      }
 
       all[leadId] = normalized;
       await writeMeta(all);
