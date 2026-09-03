@@ -6,6 +6,7 @@ import AdminTools from './components/AdminTools';
 import FollowupCenter from './components/FollowupCenter';
 import SalesPipeline from './components/SalesPipeline';
 import DealDesk from './components/DealDesk';
+import RevenueDashboard from './components/RevenueDashboard';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -30,6 +31,7 @@ export default function App() {
   if (window.location.pathname === '/admin/followups') return <FollowupCenter />;
   if (window.location.pathname === '/admin/pipeline') return <SalesPipeline />;
   if (window.location.pathname === '/admin/deals') return <DealDesk />;
+  if (window.location.pathname === '/admin/revenue') return <RevenueDashboard />;
 
   return (
     <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]">
