@@ -1,16 +1,8 @@
 import { list, put } from '@vercel/blob';
 
-const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
-  });
-
 function getHeader(request: any, name: string) {
-  const headers = request?.headers;
-  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
-  if (headers && typeof headers === 'object') return headers[name.toLowerCase()] || headers[name] || '';
-  return '';
+  const value = request?.headers?.[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] || '' : value || '';
 }
 
 function dashboardAuthorized(request: any) {
@@ -19,43 +11,41 @@ function dashboardAuthorized(request: any) {
   return Boolean(expected && authorization === `Bearer ${expected}`);
 }
 
-async function readRequestBody(request: any) {
-  if (request?.body && typeof request.body === 'object') return request.body;
-  if (typeof request?.json === 'function') return request.json();
-  return {};
+function send(response: any, status: number, body: unknown) {
+  return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
 }
 
-export default async function handler(request: any) {
+export default async function handler(request: any, response: any) {
   if (request.method === 'GET') {
-    if (!dashboardAuthorized(request)) return json(401, { error: 'Unauthorized' });
+    if (!dashboardAuthorized(request)) return send(response, 401, { error: 'Unauthorized' });
 
     try {
       const result = await list({ prefix: 'leads/' });
       const leads = await Promise.all(
         result.blobs.map(async (blob) => {
-          const response = await fetch(blob.url, {
+          const result = await fetch(blob.url, {
             headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
           });
-          if (!response.ok) return null;
-          return response.json();
+          if (!result.ok) return null;
+          return result.json();
         })
       );
-      return json(200, { leads: leads.filter(Boolean) });
+      return send(response, 200, { leads: leads.filter(Boolean) });
     } catch (error) {
       console.error('leads GET error', error);
-      return json(500, { error: 'Unable to load leads.' });
+      return send(response, 500, { error: 'Unable to load leads.' });
     }
   }
 
   if (request.method === 'POST') {
     try {
-      const body = await readRequestBody(request);
+      const body = request.body && typeof request.body === 'object' ? request.body : {};
 
-      if (String(body['bot-field'] || '').trim()) return json(200, { ok: true });
+      if (String(body['bot-field'] || '').trim()) return send(response, 200, { ok: true });
 
       const name = String(body.name || '').trim();
       const phone = String(body.phone || '').trim();
-      if (!name || !phone) return json(400, { error: 'Name and phone are required.' });
+      if (!name || !phone) return send(response, 400, { error: 'Name and phone are required.' });
 
       const lead = {
         id: crypto.randomUUID(),
@@ -80,12 +70,12 @@ export default async function handler(request: any) {
         allowOverwrite: false,
       });
 
-      return json(200, { ok: true, lead });
+      return send(response, 200, { ok: true, lead });
     } catch (error) {
       console.error('leads POST error', error);
-      return json(500, { error: 'Unable to save your request.' });
+      return send(response, 500, { error: 'Unable to save your request.' });
     }
   }
 
-  return json(405, { error: 'Method not allowed' });
+  return send(response, 405, { error: 'Method not allowed' });
 }
