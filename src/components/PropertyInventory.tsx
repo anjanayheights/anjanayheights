@@ -13,8 +13,8 @@ const EMPTY: Omit<Property, 'id' | 'createdAt'> = {
 const TYPES = ['Flat', 'Villa', 'Plot', 'Commercial Land', 'Shop', 'Office', 'Hospital', 'Other'];
 const STATUSES = ['Available', 'Hold', 'Sold', 'Inactive'] as const;
 
-function shareProperty(p: Property) {
-  const lines = [
+function propertyMessage(p: Property) {
+  return [
     `🏠 ${p.title}`,
     p.propertyType && `Type: ${p.propertyType}`,
     p.location && `Location: ${p.location}`,
@@ -26,7 +26,11 @@ function shareProperty(p: Property) {
     'Anjanay Heights',
     'Please contact us for more details or site visit.'
   ].filter(Boolean).join('\n');
-  window.open(`https://wa.me/?text=${encodeURIComponent(lines)}`, '_blank', 'noopener,noreferrer');
+}
+function shareProperty(p: Property) {
+  const text = propertyMessage(p);
+  if (navigator.share) void navigator.share({ title: p.title, text }).catch(() => {});
+  else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
 }
 
 export default function PropertyInventory() {
@@ -40,6 +44,7 @@ export default function PropertyInventory() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');
 
   async function load(token = password) {
     setLoading(true); setError('');
@@ -72,6 +77,14 @@ export default function PropertyInventory() {
     const d = await r.json(); if (r.ok) setProperties(d.properties || []); else setError(d.error || 'Unable to delete');
   }
 
+  async function copyProperty(p: Property) {
+    try {
+      await navigator.clipboard.writeText(propertyMessage(p));
+      setCopied(p.id);
+      window.setTimeout(() => setCopied(''), 1800);
+    } catch { setError('Could not copy property message.'); }
+  }
+
   const filtered = useMemo(() => properties.filter(p => {
     const q = search.toLowerCase().trim();
     const matchesSearch = !q || `${p.title} ${p.propertyType} ${p.location} ${p.price} ${p.area} ${p.bedrooms} ${p.description}`.toLowerCase().includes(q);
@@ -86,5 +99,5 @@ export default function PropertyInventory() {
 <div className="grid lg:grid-cols-[380px_1fr] gap-6 mt-6"><div className="bg-white rounded-2xl shadow-sm border p-5 h-fit"><h2 className="font-bold text-lg">{editing ? 'Edit property' : 'Add property'}</h2><div className="space-y-3 mt-4">
 <input placeholder="Property title *" value={form.title} onChange={e => set('title',e.target.value)} className="field"/><select value={form.propertyType} onChange={e=>set('propertyType',e.target.value)} className="field">{TYPES.map(x=><option key={x}>{x}</option>)}</select><input placeholder="Location *" value={form.location} onChange={e=>set('location',e.target.value)} className="field"/><input placeholder="Price / asking price" value={form.price} onChange={e=>set('price',e.target.value)} className="field"/><div className="grid grid-cols-2 gap-2"><input type="number" placeholder="Min budget ₹" value={form.minBudget ?? ''} onChange={e=>set('minBudget',e.target.value === '' ? null : Number(e.target.value))} className="field"/><input type="number" placeholder="Max budget ₹" value={form.maxBudget ?? ''} onChange={e=>set('maxBudget',e.target.value === '' ? null : Number(e.target.value))} className="field"/></div><div className="grid grid-cols-2 gap-2"><input placeholder="Area" value={form.area} onChange={e=>set('area',e.target.value)} className="field"/><input placeholder="Bedrooms" value={form.bedrooms} onChange={e=>set('bedrooms',e.target.value)} className="field"/></div><select value={form.status} onChange={e=>set('status',e.target.value as Property['status'])} className="field">{STATUSES.map(x=><option key={x}>{x}</option>)}</select><textarea placeholder="Description / notes" value={form.description} onChange={e=>set('description',e.target.value)} className="field min-h-24"/><button onClick={save} disabled={loading} className="w-full rounded-xl bg-[#1A365D] text-white py-3 font-semibold">{loading ? 'Saving…' : editing ? 'Update Property' : 'Add Property'}</button>{editing && <button onClick={()=>{setEditing(null);setForm(EMPTY)}} className="w-full mt-2 rounded-xl border py-3">Cancel</button>}{error && <p className="text-red-600 text-sm">{error}</p>}</div></div>
 
-<div className="space-y-3">{filtered.length === 0 ? <div className="bg-white border rounded-2xl p-10 text-center text-gray-500">No properties match the current filters. Add your first real listing from the form.</div> : filtered.map(p=><div key={p.id} className="bg-white border rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"><div><div className="flex items-center gap-2 flex-wrap"><h3 className="font-bold text-lg">{p.title}</h3><span className="text-xs px-2 py-1 rounded-full bg-gray-100">{p.status}</span><span className="text-xs px-2 py-1 rounded-full bg-gray-100">{p.propertyType}</span></div><p className="text-[#1A365D] font-semibold mt-1">{p.location}</p><p className="text-sm text-gray-600 mt-1">{p.price || 'Price not set'}{p.area ? ` · ${p.area}` : ''}{p.bedrooms ? ` · ${p.bedrooms}` : ''}</p>{p.description && <p className="text-sm text-gray-500 mt-2">{p.description}</p>}</div><div className="flex gap-2 flex-wrap"><button onClick={()=>shareProperty(p)} disabled={p.status !== 'Available'} className="rounded-lg bg-green-600 text-white px-3 py-2 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">WhatsApp Share</button><button onClick={()=>{setEditing(p.id);setForm({...p});window.scrollTo({top:0,behavior:'smooth'})}} className="border rounded-lg px-3 py-2 text-sm">Edit</button><button onClick={()=>remove(p.id)} className="border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">Delete</button></div></div>)}</div></div></div><style>{`.field{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:11px 13px;background:white}`}</style></div>;
+<div className="space-y-3">{filtered.length === 0 ? <div className="bg-white border rounded-2xl p-10 text-center text-gray-500">No properties match the current filters. Add your first real listing from the form.</div> : filtered.map(p=><div key={p.id} className="bg-white border rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"><div><div className="flex items-center gap-2 flex-wrap"><h3 className="font-bold text-lg">{p.title}</h3><span className="text-xs px-2 py-1 rounded-full bg-gray-100">{p.status}</span><span className="text-xs px-2 py-1 rounded-full bg-gray-100">{p.propertyType}</span></div><p className="text-[#1A365D] font-semibold mt-1">{p.location}</p><p className="text-sm text-gray-600 mt-1">{p.price || 'Price not set'}{p.area ? ` · ${p.area}` : ''}{p.bedrooms ? ` · ${p.bedrooms}` : ''}</p>{p.description && <p className="text-sm text-gray-500 mt-2">{p.description}</p>}</div><div className="flex gap-2 flex-wrap"><button onClick={()=>shareProperty(p)} disabled={p.status !== 'Available'} className="rounded-lg bg-green-600 text-white px-3 py-2 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">Share</button><button onClick={()=>copyProperty(p)} disabled={p.status !== 'Available'} className="border rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">{copied===p.id ? 'Copied' : 'Copy Message'}</button><button onClick={()=>{setEditing(p.id);setForm({...p});window.scrollTo({top:0,behavior:'smooth'})}} className="border rounded-lg px-3 py-2 text-sm">Edit</button><button onClick={()=>remove(p.id)} className="border border-red-200 text-red-600 rounded-lg px-3 py-2 text-sm">Delete</button></div></div>)}</div></div></div><style>{`.field{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:11px 13px;background:white}`}</style></div>;
 }
