@@ -1,6 +1,6 @@
 import { head, put } from '@vercel/blob';
 
-type LeadMeta = { status: string; followUp: string; note: string; priority: string; nextAction: string };
+type LeadMeta = { status: string; followUp: string; note: string; priority: string; nextAction: string; propertyType: string; location: string; budget: string; timeline: string };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const PRIORITIES = new Set(['Hot', 'Warm', 'Cold']);
 const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action']);
@@ -55,7 +55,7 @@ export default async function handler(request: any, response: any) {
       if (!leadId) return send(response, 400, { error: 'leadId is required' });
 
       const all = await readMeta();
-      const current = all[leadId] || { status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call' };
+      const current = all[leadId] || { status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call', propertyType: '', location: '', budget: '', timeline: '' };
       const incoming = body.meta || {};
       const status = String(incoming.status ?? current.status);
       const priority = String(incoming.priority ?? current.priority);
@@ -66,6 +66,10 @@ export default async function handler(request: any, response: any) {
         note: String(incoming.note ?? current.note ?? '').slice(0, 2000),
         priority: PRIORITIES.has(priority) ? priority : 'Warm',
         nextAction: NEXT_ACTIONS.has(nextAction) ? nextAction : 'Call',
+        propertyType: String(incoming.propertyType ?? current.propertyType ?? '').slice(0, 100),
+        location: String(incoming.location ?? current.location ?? '').slice(0, 150),
+        budget: String(incoming.budget ?? current.budget ?? '').slice(0, 100),
+        timeline: String(incoming.timeline ?? current.timeline ?? '').slice(0, 100),
       };
 
       all[leadId] = normalized;
