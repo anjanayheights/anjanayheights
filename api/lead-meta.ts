@@ -1,7 +1,9 @@
 import { head, put } from '@vercel/blob';
 
-type LeadMeta = { status: string; followUp: string; note: string };
+type LeadMeta = { status: string; followUp: string; note: string; priority: string; nextAction: string };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
+const PRIORITIES = new Set(['Hot', 'Warm', 'Cold']);
+const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action']);
 const META_PATH = 'crm/lead-meta.json';
 
 function getHeader(request: any, name: string) {
@@ -53,13 +55,17 @@ export default async function handler(request: any, response: any) {
       if (!leadId) return send(response, 400, { error: 'leadId is required' });
 
       const all = await readMeta();
-      const current = all[leadId] || { status: 'New', followUp: '', note: '' };
+      const current = all[leadId] || { status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call' };
       const incoming = body.meta || {};
       const status = String(incoming.status ?? current.status);
+      const priority = String(incoming.priority ?? current.priority);
+      const nextAction = String(incoming.nextAction ?? current.nextAction);
       const normalized: LeadMeta = {
         status: STATUSES.has(status) ? status : 'New',
         followUp: String(incoming.followUp ?? current.followUp ?? '').slice(0, 10),
         note: String(incoming.note ?? current.note ?? '').slice(0, 2000),
+        priority: PRIORITIES.has(priority) ? priority : 'Warm',
+        nextAction: NEXT_ACTIONS.has(nextAction) ? nextAction : 'Call',
       };
 
       all[leadId] = normalized;
