@@ -6,13 +6,26 @@ const json = (status: number, body: unknown) =>
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 
-function dashboardAuthorized(request: Request) {
+function getHeader(request: any, name: string) {
+  const headers = request?.headers;
+  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
+  if (headers && typeof headers === 'object') return headers[name.toLowerCase()] || headers[name] || '';
+  return '';
+}
+
+function dashboardAuthorized(request: any) {
   const expected = process.env.DASHBOARD_PASSWORD || '';
-  const authorization = request.headers.get('authorization') || '';
+  const authorization = getHeader(request, 'authorization');
   return Boolean(expected && authorization === `Bearer ${expected}`);
 }
 
-export default async function handler(request: Request) {
+async function readRequestBody(request: any) {
+  if (request?.body && typeof request.body === 'object') return request.body;
+  if (typeof request?.json === 'function') return request.json();
+  return {};
+}
+
+export default async function handler(request: any) {
   if (request.method === 'GET') {
     if (!dashboardAuthorized(request)) return json(401, { error: 'Unauthorized' });
 
@@ -36,10 +49,7 @@ export default async function handler(request: Request) {
 
   if (request.method === 'POST') {
     try {
-      const contentType = request.headers.get('content-type') || '';
-      const body = contentType.includes('application/json')
-        ? await request.json()
-        : Object.fromEntries((await request.formData()).entries());
+      const body = await readRequestBody(request);
 
       if (String(body['bot-field'] || '').trim()) return json(200, { ok: true });
 
