@@ -1,4 +1,5 @@
 import LeadDashboard from './components/LeadDashboard';
+import PropertyInventory from './components/PropertyInventory';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -18,6 +19,10 @@ import WhatsAppButton from './components/WhatsAppButton';
 export default function App() {
   if (window.location.pathname === '/admin') {
     return <LeadDashboard />;
+  }
+
+  if (window.location.pathname === '/admin/properties') {
+    return <PropertyInventory />;
   }
 
   return (
