@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 type Lead = { id: string; name: string; phone: string; location?: string; budget?: string; requirement?: string; created_at?: string };
 type Meta = { status: string; followUp: string; note: string; priority?: string; nextAction?: string };
 
-// Use the user's local calendar date instead of UTC, so an India-based CRM does not
-// move a follow-up to the previous day around midnight.
 const dateKey = (d = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d);
   const y = parts.find(p => p.type === 'year')?.value || '';
@@ -20,26 +18,39 @@ function waLink(lead: Lead) { const phone = waPhone(lead.phone); if (!phone) ret
 export default function FollowupCenter() {
   const [password, setPassword] = useState(() => sessionStorage.getItem('crm_password') || '');
   const [leads, setLeads] = useState<Lead[]>([]); const [meta, setMeta] = useState<Record<string, Meta>>({});
-  const [error, setError] = useState(''); const [tab, setTab] = useState<'today' | 'overdue' | 'upcoming'>('today'); const [saving, setSaving] = useState('');
+  const [error, setError] = useState(''); const [tab, setTab] = useState<'today' | 'overdue' | 'upcoming'>('today'); const [saving, setSaving] = useState(''); const [loading, setLoading] = useState(false); const [loggedIn, setLoggedIn] = useState(false);
 
-  async function load() { if (!password) return; try { const headers = { Authorization: `Bearer ${password}` }; const [lr, mr] = await Promise.all([fetch('/api/leads', { headers }), fetch('/api/lead-meta', { headers })]); if (!lr.ok || !mr.ok) throw new Error('Unauthorized'); const ld = await lr.json(); const md = await mr.json(); setLeads(Array.isArray(ld.leads) ? ld.leads : []); setMeta(md.meta || {}); sessionStorage.setItem('crm_password', password); setError(''); } catch { setError('Password incorrect or CRM data could not be loaded.'); } }
-  useEffect(() => { void load(); }, [password]);
+  async function load() {
+    if (!password.trim()) { setError('Please enter your CRM dashboard password.'); return; }
+    setLoading(true); setError('');
+    try {
+      const headers = { Authorization: `Bearer ${password.trim()}` };
+      const lr = await fetch('/api/leads', { headers, cache: 'no-store' });
+      const leadData = await lr.json().catch(() => ({}));
+      if (!lr.ok) throw new Error(leadData?.error === 'Unauthorized' ? 'Password incorrect.' : 'CRM data could not be loaded.');
+      const mr = await fetch('/api/lead-meta', { headers, cache: 'no-store' });
+      const metaData = await mr.json().catch(() => ({}));
+      setLeads(Array.isArray(leadData.leads) ? leadData.leads : []);
+      setMeta(mr.ok && metaData?.meta ? metaData.meta : {});
+      sessionStorage.setItem('crm_password', password.trim());
+      setLoggedIn(true); setError('');
+    } catch (err) {
+      setLoggedIn(false);
+      setError(err instanceof Error ? err.message : 'CRM data could not be loaded.');
+    } finally { setLoading(false); }
+  }
+
+  useEffect(() => { if (password) void load(); }, []);
 
   async function updateMeta(id: string, patch: Partial<Meta>) { const next = { ...(meta[id] || { status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call' }), ...patch }; setMeta(prev => ({ ...prev, [id]: next })); setSaving(id); try { const r = await fetch('/api/lead-meta', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` }, body: JSON.stringify({ leadId: id, meta: next }) }); if (!r.ok) throw new Error(); } catch { setError('Could not save follow-up change.'); } finally { setSaving(''); } }
 
-  function openWhatsApp(lead: Lead) {
-    const url = waLink(lead);
-    if (!url) return;
-    // Opening WhatsApp from the Follow-up Center also records the action in CRM.
-    void updateMeta(lead.id, { status: 'Contacted', nextAction: 'WhatsApp' });
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  function openWhatsApp(lead: Lead) { const url = waLink(lead); if (!url) return; void updateMeta(lead.id, { status: 'Contacted', nextAction: 'WhatsApp' }); window.open(url, '_blank', 'noopener,noreferrer'); }
 
   const today = dateKey();
   const rows = useMemo(() => leads.map(lead => ({ lead, m: meta[lead.id] || { status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call' } })).filter(({ m }) => { if (!m.followUp || ['Closed', 'Lost'].includes(m.status)) return false; if (tab === 'today') return m.followUp === today; if (tab === 'overdue') return m.followUp < today; return m.followUp > today; }).sort((a,b) => { const pa = a.m.priority === 'Hot' ? 0 : a.m.priority === 'Warm' ? 1 : 2; const pb = b.m.priority === 'Hot' ? 0 : b.m.priority === 'Warm' ? 1 : 2; return pa - pb || a.m.followUp.localeCompare(b.m.followUp); }), [leads, meta, tab, today]);
   const counts = useMemo(() => leads.reduce((a,l) => { const m = meta[l.id] || { status: 'New', followUp: '' }; if (m.followUp && !['Closed','Lost'].includes(m.status)) { if (m.followUp === today) a.today++; else if (m.followUp < today) a.overdue++; else a.upcoming++; } return a; }, { today: 0, overdue: 0, upcoming: 0 }), [leads, meta, today]);
 
-  if (!password) return <div className="min-h-screen bg-slate-50 p-4 sm:p-8"><div className="mx-auto max-w-md rounded-2xl bg-white p-6 shadow-sm"><h1 className="text-xl font-bold text-slate-900">CRM Follow-ups</h1><p className="mt-1 text-sm text-slate-600">Enter your CRM dashboard password.</p><input autoFocus type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void load(); }} className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Password"/><button onClick={() => void load()} className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white">Open Follow-ups</button><a href="/admin" className="mt-4 block text-center text-sm font-semibold text-slate-600">Back to Dashboard</a>{error && <p className="mt-3 text-sm text-red-600">{error}</p>}</div></div>;
+  if (!loggedIn) return <div className="min-h-screen bg-slate-50 p-4 sm:p-8"><div className="mx-auto max-w-md rounded-2xl bg-white p-6 shadow-sm"><h1 className="text-xl font-bold text-slate-900">CRM Follow-ups</h1><p className="mt-1 text-sm text-slate-600">Enter your CRM dashboard password.</p><form onSubmit={e => { e.preventDefault(); void load(); }}><input autoFocus type="password" value={password} onChange={e => { setPassword(e.target.value); setError(''); }} className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Password"/><button type="submit" disabled={loading} className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50">{loading ? 'Loading…' : 'Open Follow-ups'}</button></form><a href="/admin" className="mt-4 block text-center text-sm font-semibold text-slate-600">Back to Dashboard</a>{error && <p className="mt-3 text-sm text-red-600">{error}</p>}</div></div>;
 
   return <div className="min-h-screen bg-slate-50 p-4 sm:p-8"><div className="mx-auto max-w-6xl"><div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-wider text-slate-500">Anjanay Heights CRM</p><h1 className="text-2xl font-bold text-slate-900">Follow-up Center</h1><p className="text-sm text-slate-500 mt-1">Never miss a scheduled lead follow-up.</p></div><div className="flex gap-2"><button onClick={() => void load()} className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Refresh</button><a href="/admin" className="rounded-lg border bg-white px-3 py-2 text-sm font-semibold">Dashboard</a></div></div>
     {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
