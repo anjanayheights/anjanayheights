@@ -1,5 +1,6 @@
 import LeadDashboard from './components/LeadDashboard';
 import PropertyInventory from './components/PropertyInventory';
+import LeadMatches from './components/LeadMatches';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -17,13 +18,9 @@ import Footer from './components/Footer';
 import WhatsAppButton from './components/WhatsAppButton';
 
 export default function App() {
-  if (window.location.pathname === '/admin') {
-    return <LeadDashboard />;
-  }
-
-  if (window.location.pathname === '/admin/properties') {
-    return <PropertyInventory />;
-  }
+  if (window.location.pathname === '/admin') return <LeadDashboard />;
+  if (window.location.pathname === '/admin/properties') return <PropertyInventory />;
+  if (window.location.pathname === '/admin/matches') return <LeadMatches />;
 
   return (
     <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]">
