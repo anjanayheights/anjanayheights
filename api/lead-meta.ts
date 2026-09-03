@@ -97,6 +97,11 @@ export default async function handler(request: any, response: any) {
         if (incoming[field] !== undefined) normalized[field as keyof LeadMeta] = String(incoming[field] ?? '').slice(0, 2000) as never;
       }
 
+      // If a deal is already Closed and no closing date was supplied, record today's date automatically.
+      if (normalized.status === 'Closed' && !normalized.closedDate) {
+        normalized.closedDate = new Date().toISOString().slice(0, 10);
+      }
+
       all[leadId] = normalized;
       await writeMeta(all);
       return send(response, 200, { ok: true, leadId, meta: normalized });
