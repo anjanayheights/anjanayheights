@@ -36,6 +36,32 @@ function parseEncodedBody(raw: string, contentType: string) {
   return Object.fromEntries(new URLSearchParams(raw).entries());
 }
 
+function normalizePhone(phone: string) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.startsWith('91') && digits.length === 12) return digits;
+  return digits;
+}
+
+async function phoneAlreadyExists(phone: string) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return false;
+  const result = await list({ prefix: 'leads/' });
+  for (const blob of result.blobs) {
+    try {
+      const response = await fetch(blob.url, {
+        headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
+      });
+      if (!response.ok) continue;
+      const existing = await response.json();
+      if (normalizePhone(existing?.phone || '') === normalized) return true;
+    } catch {
+      // Ignore an unreadable old lead and continue checking the remaining records.
+    }
+  }
+  return false;
+}
+
 export default async function handler(request: any, response: any) {
   if (request.method === 'GET') {
     if (!dashboardAuthorized(request)) return send(response, 401, { error: 'Unauthorized' });
@@ -67,6 +93,10 @@ export default async function handler(request: any, response: any) {
       const name = String(body.name || '').trim();
       const phone = String(body.phone || '').trim();
       if (!name || !phone) return send(response, 400, { error: 'Name and phone are required.' });
+
+      if (await phoneAlreadyExists(phone)) {
+        return send(response, 200, { ok: true, duplicate: true, message: 'Your request is already with our team.' });
+      }
 
       const lead = {
         id: crypto.randomUUID(),
