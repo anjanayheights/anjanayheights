@@ -1,4 +1,5 @@
 import LeadDashboard from './components/LeadDashboard';
+import AdminDashboardShell from './components/AdminDashboardShell';
 import PropertyInventory from './components/PropertyInventory';
 import LeadMatches from './components/LeadMatches';
 import AdminTools from './components/AdminTools';
@@ -20,7 +21,7 @@ import Footer from './components/Footer';
 import WhatsAppButton from './components/WhatsAppButton';
 
 export default function App() {
-  if (window.location.pathname === '/admin') return <LeadDashboard />;
+  if (window.location.pathname === '/admin') return <AdminDashboardShell />;
   if (window.location.pathname === '/admin/properties') return <PropertyInventory />;
   if (window.location.pathname === '/admin/matches') return <LeadMatches />;
   if (window.location.pathname === '/admin/tools') return <AdminTools />;
