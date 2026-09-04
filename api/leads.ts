@@ -3,7 +3,9 @@ import { head, list, put } from '@vercel/blob';
 const META_PATH = 'crm/lead-meta.json';
 
 function getHeader(request: any, name: string) {
-  const value = request?.headers?.[name.toLowerCase()];
+  const headers = request?.headers;
+  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
+  const value = headers?.[name.toLowerCase()] ?? headers?.[name];
   return Array.isArray(value) ? value[0] || '' : value || '';
 }
 
@@ -160,8 +162,6 @@ export default async function handler(request: any, response: any) {
         allowOverwrite: false,
       });
 
-      // Automatically create a same-day follow-up for every new lead.
-      // Urgent timelines are marked Hot; other new leads are Warm.
       try {
         const allMeta = await readMeta();
         if (!allMeta[lead.id]) {
@@ -176,7 +176,6 @@ export default async function handler(request: any, response: any) {
           await writeMeta(allMeta);
         }
       } catch (metaError) {
-        // Lead creation must still succeed if follow-up metadata storage is temporarily unavailable.
         console.error('automatic lead follow-up setup error', metaError);
       }
 
