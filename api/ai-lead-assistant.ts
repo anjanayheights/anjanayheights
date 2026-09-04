@@ -9,7 +9,7 @@ function authorized(req: any) {
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!authorized(req)) return res.status(401).json({ error: 'Unauthorized' });
-  if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY is not configured in Vercel.' });
+  if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'GEMINI_API_KEY is not configured in Vercel Production. Please redeploy after adding it.' });
 
   try {
     const { mode, leads = [], properties = [] } = req.body || {};
