@@ -1,0 +1,1 @@
+AI Lead Assistant UI fix: isolate the page stacking context and give interactive controls explicit pointer/touch priority.
