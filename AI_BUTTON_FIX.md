@@ -1,0 +1,1 @@
+Temporary verification note: AI Lead Assistant controls were raised into an isolated stacking context and given explicit pointer/touch interaction priority.
