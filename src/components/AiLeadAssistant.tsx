@@ -26,10 +26,15 @@ export default function AiLeadAssistant() {
   }
 
   async function checkPassword() {
-    if (!password.trim()) { setError('Please enter the dashboard password.'); return; }
+    const enteredPassword = password.trim();
+    if (!enteredPassword) { setError('Please enter the dashboard password.'); return; }
     setLoading(true); setStage('checking'); setError('');
     try {
-      const response = await fetch('/api/leads', { headers: { Authorization: `Bearer ${password}` }, cache: 'no-store' });
+      const response = await fetch('/api/auth', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${enteredPassword}`, Accept: 'application/json' },
+        cache: 'no-store'
+      });
       const result = await readJson(response);
       if (!response.ok) throw new Error(result.error || `Password check failed (HTTP ${response.status})`);
       setLoggedIn(true);
