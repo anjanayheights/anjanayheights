@@ -10,7 +10,7 @@ async function readJson(response: Response) {
   try { return raw ? JSON.parse(raw) : {}; } catch { return { error: raw || `HTTP ${response.status}` }; }
 }
 
-const buttonClass = 'relative z-[100] pointer-events-auto cursor-pointer touch-manipulation select-none';
+const buttonClass = 'relative z-[100] pointer-events-auto cursor-pointer touch-manipulation select-none active:scale-[0.99] transition-transform';
 
 export default function AiLeadAssistant() {
   const [password, setPassword] = useState('');
