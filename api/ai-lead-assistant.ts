@@ -34,9 +34,9 @@ export default async function handler(req: any, res: any) {
     const prompt = `${instructions}\n\nLEADS:\n${JSON.stringify(safeLeads)}\n\nAVAILABLE PROPERTIES:\n${JSON.stringify(safeProperties)}\n\nReturn a concise, actionable answer with headings and bullet points. The user is a real-estate broker and wants more qualified leads and faster conversions.`;
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       contents: prompt,
-      config: { temperature: 0.3, maxOutputTokens: 1800 }
+      config: { maxOutputTokens: 1800 }
     });
 
     return res.status(200).json({ text: response.text || 'No AI response generated.' });
