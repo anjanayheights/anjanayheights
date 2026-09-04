@@ -23,11 +23,18 @@ type LeadMeta = {
   commissionReceived?: string;
   commissionStatus?: string;
   commissionNotes?: string;
+  sellerPaymentDate?: string;
+  sellerPaymentMode?: string;
+  sellerReceiptNo?: string;
+  buyerPaymentDate?: string;
+  buyerPaymentMode?: string;
+  buyerReceiptNo?: string;
 };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const PRIORITIES = new Set(['Hot', 'Warm', 'Cold']);
 const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action']);
 const COMMISSION_STATUS = new Set(['Pending', 'Partial', 'Received']);
+const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other']);
 const META_PATH = 'crm/lead-meta.json';
 
 function getHeader(request: any, name: string) {
@@ -79,12 +86,14 @@ export default async function handler(request: any, response: any) {
         budget: String(incoming.budget ?? current.budget ?? '').slice(0, 100),
         timeline: String(incoming.timeline ?? current.timeline ?? '').slice(0, 100),
       };
-      const optionalFields = ['dealValue', 'customerOffer', 'expectedClosingDate', 'closingProbability', 'negotiationNotes', 'closedDate', 'closedProperty', 'finalRemarks', 'sellerCommissionRate', 'buyerCommissionRate', 'commissionReceived', 'commissionStatus', 'commissionNotes'];
+      const optionalFields = ['dealValue', 'customerOffer', 'expectedClosingDate', 'closingProbability', 'negotiationNotes', 'closedDate', 'closedProperty', 'finalRemarks', 'sellerCommissionRate', 'buyerCommissionRate', 'commissionReceived', 'commissionStatus', 'commissionNotes', 'sellerPaymentDate', 'sellerPaymentMode', 'sellerReceiptNo', 'buyerPaymentDate', 'buyerPaymentMode', 'buyerReceiptNo'];
       for (const field of optionalFields) {
         if (incoming[field] !== undefined) normalized[field as keyof LeadMeta] = String(incoming[field] ?? '').slice(0, 2000) as never;
       }
       if (normalized.status === 'Closed' && !normalized.closedDate) normalized.closedDate = new Date().toISOString().slice(0, 10);
       if (normalized.commissionStatus && !COMMISSION_STATUS.has(normalized.commissionStatus)) normalized.commissionStatus = 'Pending';
+      if (normalized.sellerPaymentMode && !PAYMENT_MODES.has(normalized.sellerPaymentMode)) normalized.sellerPaymentMode = 'Other';
+      if (normalized.buyerPaymentMode && !PAYMENT_MODES.has(normalized.buyerPaymentMode)) normalized.buyerPaymentMode = 'Other';
       all[leadId] = normalized;
       await writeMeta(all);
       return send(response, 200, { ok: true, leadId, meta: normalized });
