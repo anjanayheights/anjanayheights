@@ -10,6 +10,7 @@ export default function AdminDashboardShell() {
             <button onClick={() => { window.location.href = '/admin/pipeline'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">📈 Sales Pipeline</button>
             <button onClick={() => { window.location.href = '/admin/matches'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🎯 Matched Properties</button>
             <button onClick={() => { window.location.href = '/admin/properties'; }} className="rounded-lg border border-[#1A365D] px-3 py-2 text-sm font-semibold text-[#1A365D]">🏠 Property Inventory</button>
+            <button onClick={() => { window.location.href = '/admin/requirements'; }} className="rounded-lg border border-[#1A365D] px-3 py-2 text-sm font-semibold text-[#1A365D]">🎯 Buyer Requirements</button>
           </div>
         </div>
       </div>
@@ -20,7 +21,7 @@ export default function AdminDashboardShell() {
           <button onClick={() => { window.location.href = '/admin/pipeline'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">📈<span className="block mt-0.5">Pipeline</span></button>
           <button onClick={() => { window.location.href = '/admin/matches'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🎯<span className="block mt-0.5">Matches</span></button>
           <button onClick={() => { window.location.href = '/admin/properties'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🏠<span className="block mt-0.5">Properties</span></button>
-          <button onClick={() => { window.location.href = '/admin/followups'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">📅<span className="block mt-0.5">Follow-ups</span></button>
+          <button onClick={() => { window.location.href = '/admin/requirements'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🎯<span className="block mt-0.5">Buyers</span></button>
         </div>
       </nav>
     </div>
