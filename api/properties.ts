@@ -1,4 +1,4 @@
-import { head, put } from '@vercel/blob';
+import { get, put } from '@vercel/blob';
 
 type Property = {
   id: string;
@@ -42,18 +42,23 @@ function parseBody(request: any) {
 }
 
 async function readProperties(): Promise<Property[]> {
-  const info = await head(PATH);
-  const token = process.env.BLOB_READ_WRITE_TOKEN || '';
-  if (!token) throw new Error('BLOB_READ_WRITE_TOKEN is not configured');
-  const result = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!result.ok) throw new Error(`Blob read failed with status ${result.status}`);
-  const data = await result.json();
+  const result = await get(PATH, { access: 'private' });
+  if (!result || result.statusCode !== 200 || !result.stream) {
+    throw new Error(`Blob read failed with status ${result?.statusCode ?? 404}`);
+  }
+  const text = await new Response(result.stream).text();
+  const data = JSON.parse(text);
   if (!Array.isArray(data)) throw new Error('Property inventory data is invalid');
   return data;
 }
 
 async function writeProperties(data: Property[]) {
-  await put(PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' });
+  await put(PATH, JSON.stringify(data), {
+    access: 'private',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: 'application/json',
+  });
 }
 
 function cleanProperty(input: any, existing?: Property): Property {
