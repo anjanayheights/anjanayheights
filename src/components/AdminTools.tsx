@@ -6,6 +6,7 @@ const tools = [
   { href: '/admin/source-analytics', icon: '📈', title: 'Lead Source Analytics', text: 'See which channels are producing enquiries and where to focus your next campaign.' },
   { href: '/admin/campaign-links', icon: '🔗', title: 'Campaign Link Builder', text: 'Create UTM-tagged links for WhatsApp, Meta, Google, referrals and property campaigns.' },
   { href: '/admin/campaign-performance', icon: '📣', title: 'Campaign Performance', text: 'See which tagged campaigns are generating enquiries, by source and medium.' },
+  { href: '/admin/source-funnel', icon: '🎯', title: 'Source Conversion Funnel', text: 'Compare each source and campaign from enquiry through contact, site visit, negotiation and closure.' },
   { href: '/admin/properties', icon: '🏠', title: 'Property Inventory', text: 'Add, edit and manage properties available for matching.' },
   { href: '/admin/matches', icon: '🎯', title: 'Lead Matching', text: 'Find the best available properties for every lead.' },
   { href: '/admin/followups', icon: '📅', title: 'Follow-ups', text: 'Work through today’s follow-ups and overdue leads.' },
