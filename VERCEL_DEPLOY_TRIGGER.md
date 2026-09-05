@@ -1,1 +1,1 @@
-Recovery endpoint deployed for inventory investigation.
+Storage diagnostic deployed for inventory recovery investigation.
