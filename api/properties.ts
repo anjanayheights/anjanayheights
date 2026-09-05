@@ -17,7 +17,7 @@ type Property = {
 
 const PATH = 'crm/properties.json';
 const ITEM_PREFIX = 'crm/properties/item-';
-const RECOVERY_MARKER = 'crm/properties/recovery-seeded-v1.json';
+const RECOVERY_MARKER = 'crm/properties/recovery-seeded-v2.json';
 const STATUSES = new Set(['Available', 'Hold', 'Sold', 'Inactive']);
 
 const RECOVERY_PROPERTIES: Property[] = [
@@ -47,6 +47,20 @@ const RECOVERY_PROPERTIES: Property[] = [
     bedrooms: '',
     status: 'Available',
     description: '110 bigha commercial land in Haridwar. Demand: ₹47 Lakhs per bigha. Approx. total value: ₹51.70 Cr. Seller: Arun.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'recovered-faridabad-hospital',
+    title: '100 Beds Hospital',
+    propertyType: 'Hospital',
+    location: 'Faridabad',
+    price: '₹55 Cr · 3000 sq yard',
+    minBudget: 550000000,
+    maxBudget: 550000000,
+    area: '3000 sq yard',
+    bedrooms: '',
+    status: 'Available',
+    description: 'Operational 100-bed hospital. Seller: Rohit Sharma. Seller contact is kept private and should be shared directly when needed.',
     createdAt: new Date().toISOString(),
   },
 ];
@@ -178,9 +192,6 @@ export default async function handler(request: any, response: any) {
       const action = String(body.action || 'upsert');
       const all = await readProperties();
 
-      // One-time migration: copy the legacy aggregate into independent item blobs.
-      // Future writes touch only the requested property, so two simultaneous saves
-      // cannot overwrite each other's inventory.
       const itemBlobs = await list({ prefix: ITEM_PREFIX });
       if (!itemBlobs.blobs?.length && all.length) await ensureItemStorage(all);
 
