@@ -15,6 +15,7 @@ import LeadGenerationCenter from './components/LeadGenerationCenter';
 import LeadSourceAnalytics from './components/LeadSourceAnalytics';
 import CampaignPerformance from './components/CampaignPerformance';
 import SourceConversionFunnel from './components/SourceConversionFunnel';
+import TelecallingCRM from './components/TelecallingCRM';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -33,6 +34,7 @@ import WhatsAppButton from './components/WhatsAppButton';
 
 export default function App() {
   if (window.location.pathname === '/admin') return <AdminDashboardShell />;
+  if (window.location.pathname === '/admin/telecalling') return <TelecallingCRM />;
   if (window.location.pathname === '/admin/properties') return <PropertyInventory />;
   if (window.location.pathname === '/admin/recovery') return <PropertyRecovery />;
   if (window.location.pathname === '/admin/matches') return <LeadMatches />;
