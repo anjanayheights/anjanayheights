@@ -2,6 +2,7 @@ import React from 'react';
 
 const tools = [
   { href: '/admin', icon: '📊', title: 'Lead Dashboard', text: 'View new leads, status, priority, notes, follow-ups and conversion.' },
+  { href: '/admin/leads-growth', icon: '🚀', title: 'Lead Generation', text: '7-day acquisition plan, channel strategy, budget planner and daily checklist.' },
   { href: '/admin/properties', icon: '🏠', title: 'Property Inventory', text: 'Add, edit and manage properties available for matching.' },
   { href: '/admin/matches', icon: '🎯', title: 'Lead Matching', text: 'Find the best available properties for every lead.' },
   { href: '/admin/followups', icon: '📅', title: 'Follow-ups', text: 'Work through today’s follow-ups and overdue leads.' },
