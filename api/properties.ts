@@ -94,17 +94,20 @@ export default async function handler(request: any, response: any) {
       const body = parseBody(request);
       const action = String(body.action || 'upsert');
       const all = await readProperties();
+      const previous = all.map(property => ({ ...property }));
+
       if (action === 'delete') {
         const id = String(body.id || '');
         const next = all.filter(p => p.id !== id);
-        await writeProperties(next, all);
+        await writeProperties(next, previous);
         return send(response, 200, { ok: true, properties: next });
       }
+
       const existingIndex = all.findIndex(p => p.id === String(body.id || ''));
       const property = cleanProperty(body, existingIndex >= 0 ? all[existingIndex] : undefined);
       if (!property.title || !property.propertyType || !property.location) return send(response, 400, { error: 'Title, property type and location are required.' });
       if (existingIndex >= 0) all[existingIndex] = property; else all.unshift(property);
-      await writeProperties(all, existingIndex >= 0 ? all.filter((_, i) => i !== existingIndex).concat(all[existingIndex]) : all.slice(1));
+      await writeProperties(all, previous);
       return send(response, 200, { ok: true, property, properties: all });
     }
     return send(response, 405, { error: 'Method not allowed' });
