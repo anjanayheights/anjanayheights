@@ -52,6 +52,41 @@ function normalizePhone(phone: string) {
   return digits;
 }
 
+function normalizeSource(value: string) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return '';
+  if (raw.includes('whatsapp') || raw === 'wa') return 'WhatsApp';
+  if (raw.includes('facebook') || raw.includes('instagram') || raw.includes('meta')) return 'Meta';
+  if (raw.includes('google')) return 'Google';
+  if (raw.includes('referral') || raw.includes('refer')) return 'Referral';
+  if (raw.includes('99acres')) return '99acres';
+  if (raw.includes('magicbricks')) return 'MagicBricks';
+  if (raw.includes('website') || raw.includes('direct')) return 'Website';
+  return '';
+}
+
+function sourceFromRequest(request: any, body: any, formName: string) {
+  const explicit = normalizeSource(body.source || body.lead_source || body.utm_source || body.utm_medium);
+  if (explicit) return explicit;
+
+  const referer = getHeader(request, 'referer') || getHeader(request, 'referrer');
+  const fromReferer = normalizeSource(referer);
+  if (fromReferer) return fromReferer;
+
+  const query = request?.query || {};
+  const fromQuery = normalizeSource(query.source || query.lead_source || query.utm_source || query.utm_medium);
+  if (fromQuery) return fromQuery;
+
+  const rawForm = String(formName || '').toLowerCase();
+  if (rawForm.includes('whatsapp')) return 'WhatsApp';
+  if (rawForm.includes('99acres')) return '99acres';
+  if (rawForm.includes('magicbricks')) return 'MagicBricks';
+  if (rawForm.includes('referral')) return 'Referral';
+  if (rawForm.includes('meta') || rawForm.includes('facebook') || rawForm.includes('instagram')) return 'Meta';
+  if (rawForm.includes('google')) return 'Google';
+  return 'Website';
+}
+
 async function readBlobJson(url: string) {
   const result = await get(url, { access: 'private', ...blobAuth });
   if (!result || result.statusCode !== 200) return null;
@@ -143,20 +178,28 @@ export default async function handler(request: any, response: any) {
         return send(response, 200, { ok: true, duplicate: true, message: 'Your request is already with our team.' });
       }
 
+      const formName = String(body['form-name'] || 'property-lead');
+      const source = sourceFromRequest(request, body, formName);
+      const query = request?.query || {};
+
       const lead = {
         id: crypto.randomUUID(),
         created_at: new Date().toISOString(),
         name,
         phone,
         email: String(body.email || '').trim(),
-        form_name: String(body['form-name'] || 'property-lead'),
+        form_name: formName,
         lead_type: String(body.lead_type || ''),
-        property_type: String(body.property_type || ''),
-        location: String(body.location || ''),
-        budget: String(body.budget || ''),
-        timeline: String(body.timeline || ''),
-        requirement: String(body.requirement || ''),
-        message: String(body.message || ''),
+        source,
+        utm_source: String(body.utm_source || query.utm_source || '').trim(),
+        utm_medium: String(body.utm_medium || query.utm_medium || '').trim(),
+        utm_campaign: String(body.utm_campaign || query.utm_campaign || '').trim(),
+        property_type: String(body.property_type || '').trim(),
+        location: String(body.location || '').trim(),
+        budget: String(body.budget || '').trim(),
+        timeline: String(body.timeline || '').trim(),
+        requirement: String(body.requirement || '').trim(),
+        message: String(body.message || '').trim(),
       };
 
       await put(`leads/${lead.id}.json`, JSON.stringify(lead), {
