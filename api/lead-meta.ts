@@ -18,9 +18,25 @@ const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other'
 const META_PATH = 'crm/lead-meta.json';
 function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
 function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
-function send(response: any, status: number, body: unknown) { return response.status(status).setHeader('Cache-Control', 'no-store').json(body); }
-async function readMeta(): Promise<Record<string, LeadMeta>> { try { const info = await head(META_PATH); const result = await fetch(info.url, { headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` }, cache: 'no-store' }); if (!result.ok) return {}; const data = await result.json(); return data && typeof data === 'object' ? data : {}; } catch { return {}; } }
-async function writeMeta(data: Record<string, LeadMeta>) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' }); }
+function send(response: any, status: number, body: unknown) { return response.status(status).setHeader('Cache-Control', 'no-store, no-cache, must-revalidate').setHeader('Pragma', 'no-cache').json(body); }
+async function readMeta(): Promise<Record<string, LeadMeta>> {
+  try {
+    const info = await head(META_PATH);
+    // Blob URLs can be CDN-cached even when the API response itself is no-store.
+    // Cache-bust the blob read so Refresh always sees the latest saved CRM metadata.
+    const separator = info.url.includes('?') ? '&' : '?';
+    const result = await fetch(`${info.url}${separator}crm_refresh=${Date.now()}-${Math.random()}`, {
+      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}`, 'Cache-Control': 'no-cache' },
+      cache: 'no-store'
+    });
+    if (!result.ok) return {};
+    const data = await result.json();
+    return data && typeof data === 'object' ? data : {};
+  } catch { return {}; }
+}
+async function writeMeta(data: Record<string, LeadMeta>) {
+  await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' });
+}
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
