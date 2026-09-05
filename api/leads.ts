@@ -1,6 +1,11 @@
-import { head, list, put } from '@vercel/blob';
+import { get, head, list, put } from '@vercel/blob';
 
 const META_PATH = 'crm/lead-meta.json';
+
+const blobAuth = {
+  oidcToken: process.env.VERCEL_OIDC_TOKEN,
+  storeId: process.env.BLOB_STORE_ID,
+};
 
 function getHeader(request: any, name: string) {
   const headers = request?.headers;
@@ -47,17 +52,19 @@ function normalizePhone(phone: string) {
   return digits;
 }
 
+async function readBlobJson(url: string) {
+  const result = await get(url, { access: 'private', ...blobAuth });
+  if (!result || result.statusCode !== 200) return null;
+  return result.stream ? await new Response(result.stream).json() : null;
+}
+
 async function phoneAlreadyExists(phone: string) {
   const normalized = normalizePhone(phone);
   if (!normalized) return false;
-  const result = await list({ prefix: 'leads/' });
+  const result = await list({ prefix: 'leads/', ...blobAuth });
   for (const blob of result.blobs) {
     try {
-      const response = await fetch(blob.url, {
-        headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
-      });
-      if (!response.ok) continue;
-      const existing = await response.json();
+      const existing = await readBlobJson(blob.url);
       if (normalizePhone(existing?.phone || '') === normalized) return true;
     } catch {
       // Ignore an unreadable old lead and continue checking the remaining records.
@@ -68,12 +75,8 @@ async function phoneAlreadyExists(phone: string) {
 
 async function readMeta() {
   try {
-    const info = await head(META_PATH);
-    const response = await fetch(info.url, {
-      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
-    });
-    if (!response.ok) return {};
-    const data = await response.json();
+    const info = await head(META_PATH, blobAuth);
+    const data = await readBlobJson(info.url);
     return data && typeof data === 'object' ? data : {};
   } catch {
     return {};
@@ -86,6 +89,7 @@ async function writeMeta(data: Record<string, any>) {
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: 'application/json',
+    ...blobAuth,
   });
 }
 
@@ -108,14 +112,14 @@ export default async function handler(request: any, response: any) {
     if (!dashboardAuthorized(request)) return send(response, 401, { error: 'Unauthorized' });
 
     try {
-      const result = await list({ prefix: 'leads/' });
+      const result = await list({ prefix: 'leads/', ...blobAuth });
       const leads = await Promise.all(
         result.blobs.map(async (blob) => {
-          const result = await fetch(blob.url, {
-            headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` },
-          });
-          if (!result.ok) return null;
-          return result.json();
+          try {
+            return await readBlobJson(blob.url);
+          } catch {
+            return null;
+          }
         })
       );
       return send(response, 200, { leads: leads.filter(Boolean) });
@@ -160,6 +164,7 @@ export default async function handler(request: any, response: any) {
         addRandomSuffix: false,
         contentType: 'application/json',
         allowOverwrite: false,
+        ...blobAuth,
       });
 
       try {
