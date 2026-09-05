@@ -52,7 +52,13 @@ async function readProperties(): Promise<Property[]> {
   return data;
 }
 
-async function writeProperties(data: Property[]) {
+async function writeProperties(data: Property[], previous: Property[]) {
+  if (!Array.isArray(previous)) throw new Error('Refusing to write without a valid backup');
+  await put(`crm/history/properties-${Date.now()}.json`, JSON.stringify(previous), {
+    access: 'private',
+    addRandomSuffix: true,
+    contentType: 'application/json',
+  });
   await put(PATH, JSON.stringify(data), {
     access: 'private',
     addRandomSuffix: false,
@@ -91,14 +97,14 @@ export default async function handler(request: any, response: any) {
       if (action === 'delete') {
         const id = String(body.id || '');
         const next = all.filter(p => p.id !== id);
-        await writeProperties(next);
+        await writeProperties(next, all);
         return send(response, 200, { ok: true, properties: next });
       }
       const existingIndex = all.findIndex(p => p.id === String(body.id || ''));
       const property = cleanProperty(body, existingIndex >= 0 ? all[existingIndex] : undefined);
       if (!property.title || !property.propertyType || !property.location) return send(response, 400, { error: 'Title, property type and location are required.' });
       if (existingIndex >= 0) all[existingIndex] = property; else all.unshift(property);
-      await writeProperties(all);
+      await writeProperties(all, existingIndex >= 0 ? all.filter((_, i) => i !== existingIndex).concat(all[existingIndex]) : all.slice(1));
       return send(response, 200, { ok: true, property, properties: all });
     }
     return send(response, 405, { error: 'Method not allowed' });
