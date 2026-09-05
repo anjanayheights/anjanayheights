@@ -17,7 +17,39 @@ type Property = {
 
 const PATH = 'crm/properties.json';
 const ITEM_PREFIX = 'crm/properties/item-';
+const RECOVERY_MARKER = 'crm/properties/recovery-seeded-v1.json';
 const STATUSES = new Set(['Available', 'Hold', 'Sold', 'Inactive']);
+
+const RECOVERY_PROPERTIES: Property[] = [
+  {
+    id: 'recovered-aminabad-710',
+    title: '710 sq ft Flat',
+    propertyType: 'Flat',
+    location: 'Sector 1, Aminabad, Greater Noida',
+    price: '₹40 Lakhs',
+    minBudget: 4000000,
+    maxBudget: 4000000,
+    area: '710 sq ft',
+    bedrooms: '',
+    status: 'Available',
+    description: 'Flat in Sector 1, Aminabad, Greater Noida. Seller: Arun.',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'recovered-haridwar-110-bigha',
+    title: '110 Bigha Commercial Land',
+    propertyType: 'Commercial Land',
+    location: 'Haridwar',
+    price: '₹47 Lakhs per Bigha',
+    minBudget: 517000000,
+    maxBudget: 517000000,
+    area: '110 bigha',
+    bedrooms: '',
+    status: 'Available',
+    description: '110 bigha commercial land in Haridwar. Demand: ₹47 Lakhs per bigha. Approx. total value: ₹51.70 Cr. Seller: Arun.',
+    createdAt: new Date().toISOString(),
+  },
+];
 
 function getHeader(request: any, name: string) {
   const value = request?.headers?.[name.toLowerCase()];
@@ -97,6 +129,23 @@ async function ensureItemStorage(properties: Property[]) {
   }
 }
 
+async function seedRecoveredPropertiesOnce() {
+  const marker = await get(RECOVERY_MARKER, { access: 'private' });
+  if (marker?.statusCode === 200) return;
+
+  const existing = await readProperties();
+  const existingLocations = new Set(existing.map(p => p.location.trim().toLowerCase()));
+  const missing = RECOVERY_PROPERTIES.filter(p => !existingLocations.has(p.location.trim().toLowerCase()));
+
+  if (missing.length) await ensureItemStorage(missing);
+  await put(RECOVERY_MARKER, JSON.stringify({ seededAt: new Date().toISOString(), ids: missing.map(p => p.id) }), {
+    access: 'private',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: 'application/json',
+  });
+}
+
 function cleanProperty(input: any, existing?: Property): Property {
   const id = String(input.id || existing?.id || crypto.randomUUID());
   const status = String(input.status || existing?.status || 'Available');
@@ -119,7 +168,10 @@ function cleanProperty(input: any, existing?: Property): Property {
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
-    if (request.method === 'GET') return send(response, 200, { properties: await readProperties() });
+    if (request.method === 'GET') {
+      await seedRecoveredPropertiesOnce();
+      return send(response, 200, { properties: await readProperties() });
+    }
 
     if (request.method === 'POST') {
       const body = parseBody(request);
