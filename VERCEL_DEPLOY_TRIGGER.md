@@ -1,1 +1,1 @@
-Deployment trigger for the latest main branch.
+Recovery endpoint deployed for inventory investigation.
