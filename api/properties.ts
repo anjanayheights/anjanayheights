@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { get, list, put, del } from '@vercel/blob';
 
 type Property = {
   id: string;
@@ -16,6 +16,7 @@ type Property = {
 };
 
 const PATH = 'crm/properties.json';
+const ITEM_PREFIX = 'crm/properties/item-';
 const STATUSES = new Set(['Available', 'Hold', 'Sold', 'Inactive']);
 
 function getHeader(request: any, name: string) {
@@ -41,7 +42,7 @@ function parseBody(request: any) {
   return {};
 }
 
-async function readProperties(): Promise<Property[]> {
+async function readLegacyProperties(): Promise<Property[]> {
   const result = await get(PATH, { access: 'private' });
   if (!result || result.statusCode !== 200 || !result.stream) {
     throw new Error(`Blob read failed with status ${result?.statusCode ?? 404}`);
@@ -52,19 +53,48 @@ async function readProperties(): Promise<Property[]> {
   return data;
 }
 
-async function writeProperties(data: Property[], previous: Property[]) {
-  if (!Array.isArray(previous)) throw new Error('Refusing to write without a valid backup');
-  await put(`crm/history/properties-${Date.now()}.json`, JSON.stringify(previous), {
-    access: 'private',
-    addRandomSuffix: true,
-    contentType: 'application/json',
-  });
-  await put(PATH, JSON.stringify(data), {
-    access: 'private',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: 'application/json',
-  });
+async function readItemProperties(): Promise<Property[]> {
+  const blobs: any[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix: ITEM_PREFIX, cursor });
+    blobs.push(...(page.blobs || []));
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+
+  const properties: Property[] = [];
+  for (const blob of blobs) {
+    const result = await get(blob.pathname, { access: 'private' });
+    if (!result || result.statusCode !== 200 || !result.stream) continue;
+    try {
+      const value = JSON.parse(await new Response(result.stream).text());
+      if (value && typeof value === 'object' && value.id) properties.push(value as Property);
+    } catch {
+      // Ignore an invalid individual item instead of breaking the whole inventory.
+    }
+  }
+  return properties;
+}
+
+async function readProperties(): Promise<Property[]> {
+  const items = await readItemProperties();
+  if (items.length > 0) return items;
+  return readLegacyProperties();
+}
+
+async function itemPath(id: string) {
+  return `${ITEM_PREFIX}${encodeURIComponent(id)}.json`;
+}
+
+async function ensureItemStorage(properties: Property[]) {
+  for (const property of properties) {
+    await put(await itemPath(property.id), JSON.stringify(property), {
+      access: 'private',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: 'application/json',
+    });
+  }
 }
 
 function cleanProperty(input: any, existing?: Property): Property {
@@ -90,26 +120,43 @@ export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
     if (request.method === 'GET') return send(response, 200, { properties: await readProperties() });
+
     if (request.method === 'POST') {
       const body = parseBody(request);
       const action = String(body.action || 'upsert');
       const all = await readProperties();
-      const previous = all.map(property => ({ ...property }));
+
+      // One-time migration: copy the legacy aggregate into independent item blobs.
+      // Future writes touch only the requested property, so two simultaneous saves
+      // cannot overwrite each other's inventory.
+      const itemBlobs = await list({ prefix: ITEM_PREFIX });
+      if (!itemBlobs.blobs?.length && all.length) await ensureItemStorage(all);
 
       if (action === 'delete') {
         const id = String(body.id || '');
         const next = all.filter(p => p.id !== id);
-        await writeProperties(next, previous);
+        if (next.length === all.length) return send(response, 404, { error: 'Property not found.' });
+        await del(await itemPath(id));
         return send(response, 200, { ok: true, properties: next });
       }
 
       const existingIndex = all.findIndex(p => p.id === String(body.id || ''));
       const property = cleanProperty(body, existingIndex >= 0 ? all[existingIndex] : undefined);
       if (!property.title || !property.propertyType || !property.location) return send(response, 400, { error: 'Title, property type and location are required.' });
-      if (existingIndex >= 0) all[existingIndex] = property; else all.unshift(property);
-      await writeProperties(all, previous);
-      return send(response, 200, { ok: true, property, properties: all });
+
+      await put(await itemPath(property.id), JSON.stringify(property), {
+        access: 'private',
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        contentType: 'application/json',
+      });
+
+      const next = existingIndex >= 0
+        ? all.map((p, index) => index === existingIndex ? property : p)
+        : [property, ...all];
+      return send(response, 200, { ok: true, property, properties: next });
     }
+
     return send(response, 405, { error: 'Method not allowed' });
   } catch (error) {
     console.error('properties error', error);
