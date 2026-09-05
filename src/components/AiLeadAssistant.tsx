@@ -38,8 +38,9 @@ export default function AiLeadAssistant() {
     finally { setLoading(false); setStage('idle'); }
   }
 
-  async function runAssistant() {
+  async function runAssistant(selectedMode: Mode = mode) {
     if (loading) return;
+    setMode(selectedMode);
     setLoading(true); setStage('loading'); setError(''); setText('');
     try {
       const headers = { Authorization: `Bearer ${password}`, Accept: 'application/json' };
@@ -55,20 +56,13 @@ export default function AiLeadAssistant() {
       const leads = (leadsData.leads || []).map((l: Lead) => ({ ...l, ...(metaData.meta?.[l.id] || {}) }));
       const properties = (propertiesData.properties || []).map((p: Property) => ({ id: p.id, title: p.title, propertyType: p.propertyType, location: p.location, price: p.price, area: p.area, status: p.status }));
       setStage('ai');
-      const response = await fetch('/api/ai-lead-assistant', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}`, Accept: 'application/json' }, body: JSON.stringify({ mode, leads, properties }), cache: 'no-store' });
+      const response = await fetch('/api/ai-lead-assistant', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}`, Accept: 'application/json' }, body: JSON.stringify({ mode: selectedMode, leads, properties }), cache: 'no-store' });
       const result = await readJson(response);
       if (!response.ok) throw new Error(`AI API failed: ${result.error || `HTTP ${response.status}`}`);
       setText(result.text || 'No AI response generated.');
     } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong while running AI.'); }
     finally { setLoading(false); setStage('idle'); }
   }
-
-  const selectMode = (nextMode: Mode) => {
-    if (loading) return;
-    setError('');
-    setText('');
-    setMode(nextMode);
-  };
 
   if (!loggedIn) return (
     <div className="relative z-0 isolate min-h-screen bg-[#F5F7FA] flex items-center justify-center px-4">
@@ -92,9 +86,9 @@ export default function AiLeadAssistant() {
           <button type="button" onClick={() => { setLoggedIn(false); setPassword(''); setText(''); setError(''); }} onKeyDown={e => handleButtonKeyDown(e, () => { setLoggedIn(false); setPassword(''); setText(''); setError(''); })} className={`${buttonClass} bg-white border px-4 py-2 rounded-xl font-semibold`}>Logout</button>
         </div>
         <div className="grid md:grid-cols-3 gap-3 mb-5" style={{ position: 'relative', zIndex: 1000, pointerEvents: 'auto' }}>
-          <button type="button" aria-pressed={mode === 'analyze'} onClick={() => selectMode('analyze')} onKeyDown={e => handleButtonKeyDown(e, () => selectMode('analyze'))} className={`${buttonClass} text-left rounded-2xl p-5 border-2 ${mode === 'analyze' ? 'border-[#1A365D] bg-white' : 'border-transparent bg-white'}`}><div className="text-2xl">🎯</div><p className="font-bold mt-2">Analyze Leads</p><p className="text-sm text-gray-500 mt-1">Find the top opportunities and today's priorities.</p></button>
-          <button type="button" aria-pressed={mode === 'campaign'} onClick={() => selectMode('campaign')} onKeyDown={e => handleButtonKeyDown(e, () => selectMode('campaign'))} className={`${buttonClass} text-left rounded-2xl p-5 border-2 ${mode === 'campaign' ? 'border-[#1A365D] bg-white' : 'border-transparent bg-white'}`}><div className="text-2xl">📣</div><p className="font-bold mt-2">Get More Leads</p><p className="text-sm text-gray-500 mt-1">Create a 7-day WhatsApp, Meta and Google lead plan.</p></button>
-          <button type="button" aria-pressed={mode === 'followup'} onClick={() => selectMode('followup')} onKeyDown={e => handleButtonKeyDown(e, () => selectMode('followup'))} className={`${buttonClass} text-left rounded-2xl p-5 border-2 ${mode === 'followup' ? 'border-[#1A365D] bg-white' : 'border-transparent bg-white'}`}><div className="text-2xl">💬</div><p className="font-bold mt-2">Follow-up Messages</p><p className="text-sm text-gray-500 mt-1">Generate ready-to-send WhatsApp follow-ups.</p></button>
+          <button type="button" aria-pressed={mode === 'analyze'} onClick={() => { void runAssistant('analyze'); }} onKeyDown={e => handleButtonKeyDown(e, () => { void runAssistant('analyze'); })} className={`${buttonClass} text-left rounded-2xl p-5 border-2 ${mode === 'analyze' ? 'border-[#1A365D] bg-white' : 'border-transparent bg-white'}`}><div className="text-2xl">🎯</div><p className="font-bold mt-2">Analyze Leads</p><p className="text-sm text-gray-500 mt-1">Find the top opportunities and today's priorities.</p></button>
+          <button type="button" aria-pressed={mode === 'campaign'} onClick={() => { void runAssistant('campaign'); }} onKeyDown={e => handleButtonKeyDown(e, () => { void runAssistant('campaign'); })} className={`${buttonClass} text-left rounded-2xl p-5 border-2 ${mode === 'campaign' ? 'border-[#1A365D] bg-white' : 'border-transparent bg-white'}`}><div className="text-2xl">📣</div><p className="font-bold mt-2">Get More Leads</p><p className="text-sm text-gray-500 mt-1">Create a 7-day WhatsApp, Meta and Google lead plan.</p></button>
+          <button type="button" aria-pressed={mode === 'followup'} onClick={() => { void runAssistant('followup'); }} onKeyDown={e => handleButtonKeyDown(e, () => { void runAssistant('followup'); })} className={`${buttonClass} text-left rounded-2xl p-5 border-2 ${mode === 'followup' ? 'border-[#1A365D] bg-white' : 'border-transparent bg-white'}`}><div className="text-2xl">💬</div><p className="font-bold mt-2">Follow-up Messages</p><p className="text-sm text-gray-500 mt-1">Generate ready-to-send WhatsApp follow-ups.</p></button>
         </div>
         <div className="relative z-10 bg-white rounded-2xl shadow p-5 mb-5"><div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><p className="font-bold text-lg text-[#1A365D]">{mode === 'analyze' ? 'Sales Manager' : mode === 'campaign' ? 'Lead Generation Planner' : 'WhatsApp Follow-up Writer'}</p><p className="text-sm text-gray-500">AI will use your CRM leads and available property inventory.</p>{statusText && <p className="text-sm text-blue-700 mt-2 font-medium">{statusText}</p>}</div><button type="button" onClick={() => { void runAssistant(); }} onKeyDown={e => handleButtonKeyDown(e, () => { void runAssistant(); })} disabled={loading} className={`${buttonClass} bg-[#1A365D] text-white px-6 py-3 rounded-xl font-semibold disabled:opacity-60`}>{loading ? 'Working...' : 'Run AI'}</button></div>{error && <div className="mt-4 bg-red-50 text-red-700 rounded-xl p-3 text-sm break-words">{error}</div>}</div>
         {text ? <div className="relative z-10 bg-white rounded-2xl shadow p-6"><h2 className="font-bold text-[#1A365D] text-xl mb-4">AI Recommendation</h2><div className="whitespace-pre-wrap leading-7 text-gray-800">{text}</div></div> : <div className="relative z-10 bg-white rounded-2xl border border-dashed p-10 text-center text-gray-500">Choose a mode and tap <strong>Run AI</strong>.</div>}
