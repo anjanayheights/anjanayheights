@@ -42,13 +42,14 @@ function parseBody(request: any) {
 }
 
 async function readProperties(): Promise<Property[]> {
-  try {
-    const info = await head(PATH);
-    const result = await fetch(info.url, { headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}` } });
-    if (!result.ok) return [];
-    const data = await result.json();
-    return Array.isArray(data) ? data : [];
-  } catch { return []; }
+  const info = await head(PATH);
+  const token = process.env.BLOB_READ_WRITE_TOKEN || '';
+  if (!token) throw new Error('BLOB_READ_WRITE_TOKEN is not configured');
+  const result = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!result.ok) throw new Error(`Blob read failed with status ${result.status}`);
+  const data = await result.json();
+  if (!Array.isArray(data)) throw new Error('Property inventory data is invalid');
+  return data;
 }
 
 async function writeProperties(data: Property[]) {
