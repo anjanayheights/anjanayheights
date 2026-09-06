@@ -3,6 +3,7 @@ import LeadPriorityCenter from './LeadPriorityCenter';
 import RevenueCommissionSummary from './RevenueCommissionSummary';
 import CommissionCollectionTracker from './CommissionCollectionTracker';
 import TodayActionCenter from './TodayActionCenter';
+import LeadDealConversion from './LeadDealConversion';
 
 export default function AdminDashboardShell() {
   return (
@@ -24,6 +25,7 @@ export default function AdminDashboardShell() {
         </div>
       </div>
       <TodayActionCenter />
+      <LeadDealConversion />
       <RevenueCommissionSummary />
       <CommissionCollectionTracker />
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
