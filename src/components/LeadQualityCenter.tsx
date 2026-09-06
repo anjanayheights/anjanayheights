@@ -57,6 +57,7 @@ export default function LeadQualityCenter() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState('');
 
   async function load() {
     setLoading(true); setError('');
@@ -75,6 +76,27 @@ export default function LeadQualityCenter() {
     finally { setLoading(false); }
   }
 
+  async function saveLeadMeta(leadId: string, patch: Meta) {
+    const nextMeta = { ...(meta[leadId] || {}), ...patch };
+    setMeta((current) => ({ ...current, [leadId]: nextMeta }));
+    setSaving(leadId);
+    setError('');
+    try {
+      const response = await fetch('/api/lead-meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
+        body: JSON.stringify({ leadId, meta: nextMeta }),
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || 'Could not save lead action');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save lead action');
+    } finally { setSaving(''); }
+  }
+
   const scored = useMemo(() => leads.map((lead) => {
     const m = meta[lead.id] || {};
     const score = scoreLead(lead, m);
@@ -88,6 +110,6 @@ export default function LeadQualityCenter() {
 
   return <div className="min-h-screen bg-[#F5F7FA] p-4 md:p-8"><div className="max-w-7xl mx-auto"><div className="flex flex-col md:flex-row md:justify-between gap-3 mb-7"><div><h1 className="text-3xl font-bold text-[#1A365D]">Lead Quality Center</h1><p className="text-gray-500 mt-1">Automatic intent scoring — focus your team on the best opportunities first.</p></div><button onClick={() => void load()} disabled={loading} className="bg-[#1A365D] text-white px-5 py-3 rounded-xl font-semibold h-fit">{loading ? 'Refreshing...' : '↻ Refresh'}</button></div>{error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-5">{error}</div>}
   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">{['Very Hot','Hot','Warm','Cold'].map((t) => <div key={t} className="bg-white rounded-2xl p-4 shadow"><p className="text-gray-500 text-sm">{t}</p><p className="text-3xl font-bold text-[#1A365D]">{counts[t] || 0}</p></div>)}</div>
-  <div className="bg-white rounded-2xl shadow p-5 mb-6"><h2 className="text-xl font-bold text-[#1A365D]">🔥 Priority Leads</h2><p className="text-sm text-gray-500 mt-1">Hot and Very Hot leads should be called first.</p><div className="mt-4 space-y-3">{top.length === 0 ? <p className="text-gray-500">No high-intent active leads found.</p> : top.slice(0, 15).map(({ lead, meta: m, score, tier: t }) => { const location = m.location || lead.location || 'Location not specified'; const budget = m.budget || lead.budget || 'Budget not specified'; const timeline = m.timeline || lead.timeline || 'Timeline not specified'; return <div key={lead.id} className="border rounded-xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><strong className="text-lg">{lead.name || 'Unnamed lead'}</strong><span className="px-2 py-1 rounded-full bg-gray-100 text-xs font-bold">{t} · {score}/100</span></div><p className="text-sm text-gray-600 mt-1">{location} · {budget} · {timeline}</p><p className="text-xs text-gray-500 mt-1">Status: {m.status || 'New'} · Next: {m.nextAction || 'Call'}</p></div><div className="flex gap-2"><a href={`tel:${lead.phone}`} className="px-4 py-2 rounded-lg bg-[#1A365D] text-white font-semibold">Call</a><button onClick={() => window.open(`https://wa.me/${wa(lead.phone)}?text=${encodeURIComponent(`Hi ${lead.name || 'there'}, thank you for your enquiry with Anjanay Heights. I have suitable property options matching your requirement. May I call you at a convenient time?`)}`, '_blank', 'noopener,noreferrer')} className="px-4 py-2 rounded-lg border border-[#1A365D] text-[#1A365D] font-semibold">WhatsApp</button></div></div>; })}</div></div>
+  <div className="bg-white rounded-2xl shadow p-5 mb-6"><h2 className="text-xl font-bold text-[#1A365D]">🔥 Priority Leads</h2><p className="text-sm text-gray-500 mt-1">Hot and Very Hot leads should be called first. Record the next action here so the CRM workflow stays updated.</p><div className="mt-4 space-y-3">{top.length === 0 ? <p className="text-gray-500">No high-intent active leads found.</p> : top.slice(0, 15).map(({ lead, meta: m, score, tier: t }) => { const location = m.location || lead.location || 'Location not specified'; const budget = m.budget || lead.budget || 'Budget not specified'; const timeline = m.timeline || lead.timeline || 'Timeline not specified'; return <div key={lead.id} className="border rounded-xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><strong className="text-lg">{lead.name || 'Unnamed lead'}</strong><span className="px-2 py-1 rounded-full bg-gray-100 text-xs font-bold">{t} · {score}/100</span></div><p className="text-sm text-gray-600 mt-1">{location} · {budget} · {timeline}</p><p className="text-xs text-gray-500 mt-1">Status: {m.status || 'New'} · Next: {m.nextAction || 'Call'} · Follow-up: {m.followUp || 'Not set'}</p></div><div className="flex flex-wrap gap-2"><a href={`tel:${lead.phone}`} className="px-4 py-2 rounded-lg bg-[#1A365D] text-white font-semibold">Call</a><button onClick={() => window.open(`https://wa.me/${wa(lead.phone)}?text=${encodeURIComponent(`Hi ${lead.name || 'there'}, thank you for your enquiry with Anjanay Heights. I have suitable property options matching your requirement. May I call you at a convenient time?`)}`, '_blank', 'noopener,noreferrer')} className="px-4 py-2 rounded-lg border border-[#1A365D] text-[#1A365D] font-semibold">WhatsApp</button><button disabled={saving === lead.id} onClick={() => void saveLeadMeta(lead.id, { priority: 'Hot', nextAction: 'Follow-up', followUp: new Date().toISOString().slice(0, 10) })} className="px-4 py-2 rounded-lg border font-semibold disabled:opacity-50">{saving === lead.id ? 'Saving...' : 'Follow-up Today'}</button></div></div>; })}</div></div>
   <div className="bg-white rounded-2xl shadow p-5"><h2 className="text-xl font-bold text-[#1A365D]">All Leads by Quality</h2><div className="overflow-x-auto mt-3"><table className="w-full text-sm"><thead><tr className="text-left border-b"><th className="py-3 pr-3">Lead</th><th>Score</th><th>Quality</th><th>Location</th><th>Budget</th><th>Timeline</th><th>Status</th></tr></thead><tbody>{scored.map(({lead,meta:m,score,tier:t}) => <tr key={lead.id} className="border-b"><td className="py-3 pr-3 font-semibold">{lead.name || 'Unnamed'}<div className="text-xs text-gray-500">{lead.phone}</div></td><td className="font-bold">{score}</td><td>{t}</td><td>{m.location || lead.location || '—'}</td><td>{m.budget || lead.budget || '—'}</td><td>{m.timeline || lead.timeline || '—'}</td><td>{m.status || 'New'}</td></tr>)}</tbody></table></div></div></div></div>;
 }
