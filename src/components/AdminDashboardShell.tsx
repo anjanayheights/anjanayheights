@@ -4,6 +4,7 @@ import RevenueCommissionSummary from './RevenueCommissionSummary';
 import CommissionCollectionTracker from './CommissionCollectionTracker';
 import TodayActionCenter from './TodayActionCenter';
 import LeadDealConversion from './LeadDealConversion';
+import SmartFollowupPanel from './SmartFollowupPanel';
 
 export default function AdminDashboardShell() {
   return (
@@ -25,6 +26,7 @@ export default function AdminDashboardShell() {
         </div>
       </div>
       <TodayActionCenter />
+      <SmartFollowupPanel />
       <LeadDealConversion />
       <RevenueCommissionSummary />
       <CommissionCollectionTracker />
