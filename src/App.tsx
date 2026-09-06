@@ -16,6 +16,8 @@ import LeadSourceAnalytics from './components/LeadSourceAnalytics';
 import CampaignPerformance from './components/CampaignPerformance';
 import SourceConversionFunnel from './components/SourceConversionFunnel';
 import TelecallingCRM from './components/TelecallingCRM';
+import LeadQualityCenter from './components/LeadQualityCenter';
+import DailyFollowupQueue from './components/DailyFollowupQueue';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -40,6 +42,7 @@ export default function App() {
   if (window.location.pathname === '/admin/matches') return <LeadMatches />;
   if (window.location.pathname === '/admin/tools') return <AdminTools />;
   if (window.location.pathname === '/admin/followups') return <FollowupCenter />;
+  if (window.location.pathname === '/admin/daily-followups') return <DailyFollowupQueue />;
   if (window.location.pathname === '/admin/pipeline') return <SalesPipeline />;
   if (window.location.pathname === '/admin/deals') return <DealDesk />;
   if (window.location.pathname === '/admin/revenue') return <RevenueDashboard />;
@@ -47,6 +50,7 @@ export default function App() {
   if (window.location.pathname === '/admin/requirements') return <BuyerRequirements />;
   if (window.location.pathname === '/admin/ai') return <AiLeadAssistant />;
   if (window.location.pathname === '/admin/leads-growth') return <LeadGenerationCenter />;
+  if (window.location.pathname === '/admin/lead-quality') return <LeadQualityCenter />;
   if (window.location.pathname === '/admin/source-analytics') return <LeadSourceAnalytics />;
   if (window.location.pathname === '/admin/campaign-performance') return <CampaignPerformance />;
   if (window.location.pathname === '/admin/source-funnel') return <SourceConversionFunnel />;
