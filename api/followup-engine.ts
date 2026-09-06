@@ -11,7 +11,7 @@ type Meta = {
   nextAction?: string;
   followUp?: string;
   timeline?: string;
-  history?: Array<{ action?: string; at?: string }>;
+  callHistory?: Array<{ id?: string; at?: string; outcome?: string; note?: string }>;
 };
 
 const CLOSED = new Set(['Closed', 'Lost']);
@@ -67,10 +67,10 @@ function recommendation(lead: Lead, meta: Meta) {
     action = 'Follow-up'; days = 1; reason = 'Negotiation stage — closing follow-up is the priority.';
   }
 
-  const last = Array.isArray(meta.history) && meta.history.length ? meta.history[meta.history.length - 1] : undefined;
-  const lastAction = String(last?.action || '').toLowerCase();
-  if (lastAction.includes('no response') || lastAction.includes('not reachable')) {
-    action = 'Call'; days = 1; reason = 'No-response signal — retry contact.';
+  const last = Array.isArray(meta.callHistory) && meta.callHistory.length ? meta.callHistory[meta.callHistory.length - 1] : undefined;
+  const signal = `${String(last?.outcome || '')} ${String(last?.note || '')}`.toLowerCase();
+  if (signal.includes('no response') || signal.includes('not reachable') || signal.includes('no answer') || signal.includes('busy')) {
+    action = 'Call'; days = 1; reason = 'Recent contact signal indicates another call attempt is needed.';
   }
 
   const suggestedDate = followUp && followUp >= today ? followUp : addDays(today, days);
