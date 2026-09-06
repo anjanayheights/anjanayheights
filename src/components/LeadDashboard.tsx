@@ -16,6 +16,8 @@ type Lead = {
   message: string;
 };
 
+type HistoryItem = { action: string; at: string };
+
 type LeadMeta = {
   status: string;
   followUp: string;
@@ -26,6 +28,7 @@ type LeadMeta = {
   location: string;
   budget: string;
   timeline: string;
+  history?: HistoryItem[];
 };
 
 const STATUSES = ['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost'];
@@ -35,7 +38,7 @@ const META_KEY = 'anjanay-heights-lead-meta-v2';
 const OLD_META_KEY = 'anjanay-heights-lead-meta-v1';
 const DEFAULT_META: LeadMeta = {
   status: 'New', followUp: '', note: '', priority: 'Warm', nextAction: 'Call',
-  propertyType: '', location: '', budget: '', timeline: ''
+  propertyType: '', location: '', budget: '', timeline: '', history: []
 };
 
 function readMeta(): Record<string, LeadMeta> {
@@ -57,6 +60,10 @@ function whatsappPhone(phone: string) {
   return digits.length === 10 ? `91${digits}` : digits;
 }
 
+function stamp() {
+  return new Date().toISOString();
+}
+
 export default function LeadDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [password, setPassword] = useState('');
@@ -68,6 +75,7 @@ export default function LeadDashboard() {
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [meta, setMeta] = useState<Record<string, LeadMeta>>({});
   const [savingId, setSavingId] = useState('');
+  const [openHistory, setOpenHistory] = useState<Record<string, boolean>>({});
 
   useEffect(() => setMeta(readMeta()), []);
 
@@ -112,6 +120,15 @@ export default function LeadDashboard() {
     } finally {
       setSavingId('');
     }
+  }
+
+  function addHistory(id: string, action: string) {
+    const old = getMeta(id).history || [];
+    return [...old, { action, at: stamp() }].slice(-20);
+  }
+
+  async function recordActivity(id: string, action: string) {
+    await saveLeadMeta(id, { history: addHistory(id, action) });
   }
 
   async function loadLeads() {
@@ -222,6 +239,7 @@ export default function LeadDashboard() {
     ].filter(Boolean);
     const details = parts.join('\n');
     const message = `Hi ${lead.name || 'there'}, thank you for your enquiry with Anjanay Heights.\n\n${details ? `${details}\n\n` : ''}I would be happy to help you with suitable property options. Please let me know a convenient time to speak.\n\nRegards,\nAnjanay Heights`;
+    void recordActivity(lead.id, 'WhatsApp');
     window.open(`https://wa.me/${whatsappPhone(lead.phone)}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   }
 
@@ -326,6 +344,7 @@ export default function LeadDashboard() {
             const m = getMeta(lead.id);
             const e = effectiveLead(lead);
             const duplicate = phoneKey(lead.phone) && duplicatePhones[phoneKey(lead.phone)] > 1;
+            const history = m.history || [];
             return (
               <div key={lead.id} className="bg-white rounded-2xl shadow p-5">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -333,7 +352,7 @@ export default function LeadDashboard() {
                     <div className="flex items-center gap-2 flex-wrap"><h2 className="text-xl font-bold text-[#1A365D]">{lead.name || 'Unnamed lead'}</h2><span className="px-2 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">{m.priority}</span>{duplicate && <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Duplicate phone</span>}</div>
                     <p className="text-gray-500 text-sm mt-1">{lead.lead_type || lead.form_name} · {new Date(lead.created_at).toLocaleString('en-IN')}</p>
                   </div>
-                  <div className="flex gap-2"><button onClick={() => { window.location.href = `tel:${lead.phone}`; }} className="bg-[#1A365D] text-white px-4 py-2 rounded-xl font-semibold">Call</button><button onClick={() => openWhatsApp(lead)} className="bg-green-600 text-white px-4 py-2 rounded-xl font-semibold">WhatsApp Follow-up</button></div>
+                  <div className="flex gap-2"><button onClick={() => { void recordActivity(lead.id, 'Call'); window.location.href = `tel:${lead.phone}`; }} className="bg-[#1A365D] text-white px-4 py-2 rounded-xl font-semibold">Call</button><button onClick={() => openWhatsApp(lead)} className="bg-green-600 text-white px-4 py-2 rounded-xl font-semibold">WhatsApp Follow-up</button></div>
                 </div>
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 mt-5">
@@ -341,6 +360,8 @@ export default function LeadDashboard() {
                   <div><p className="text-xs text-gray-400">LEAD TYPE</p><p>{lead.lead_type || '—'}</p></div>
                   <div><p className="text-xs text-gray-400">ORIGINAL REQUIREMENT / MESSAGE</p><p>{lead.message || lead.requirement || '—'}</p></div>
                 </div>
+
+                {history.length > 0 && <div className="mt-5 border-t pt-5"><div className="flex items-center justify-between gap-3"><div><p className="font-bold text-[#1A365D]">Lead Activity Timeline</p><p className="text-xs text-gray-500 mt-1">Last action: {history[history.length - 1].action} · {new Date(history[history.length - 1].at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} · {history.length} actions</p></div><button type="button" onClick={() => setOpenHistory((x) => ({ ...x, [lead.id]: !x[lead.id] }))} className="text-sm font-bold text-[#1A365D] underline">{openHistory[lead.id] ? 'Hide timeline' : 'View timeline'}</button></div>{openHistory[lead.id] && <div className="mt-3 rounded-xl bg-gray-50 border p-4 space-y-3">{[...history].reverse().map((item, index) => <div key={`${item.at}-${index}`} className="flex gap-3 text-sm"><span className="mt-1.5 h-2.5 w-2.5 rounded-full bg-[#1A365D] shrink-0"/><div><p className="font-semibold text-gray-800">{item.action}</p><p className="text-xs text-gray-500">{new Date(item.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p></div></div>)}</div>}</div>}
 
                 <div className="mt-5 border-t pt-5">
                   <p className="font-bold text-[#1A365D] mb-3">Lead Requirement Details</p>
@@ -355,9 +376,9 @@ export default function LeadDashboard() {
 
                 <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-3 mt-5">
                   <label className="text-sm font-semibold">PRIORITY<select value={m.priority} onChange={(e2) => void saveLeadMeta(lead.id, { priority: e2.target.value })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">{PRIORITIES.map((priority) => <option key={priority}>{priority}</option>)}</select></label>
-                  <label className="text-sm font-semibold">STATUS<select value={m.status} onChange={(e2) => void saveLeadMeta(lead.id, { status: e2.target.value })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
-                  <label className="text-sm font-semibold">NEXT ACTION<select value={m.nextAction} onChange={(e2) => void saveLeadMeta(lead.id, { nextAction: e2.target.value })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">{NEXT_ACTIONS.map((action) => <option key={action}>{action}</option>)}</select></label>
-                  <label className="text-sm font-semibold">FOLLOW-UP DATE<input type="date" value={m.followUp} onChange={(e2) => void saveLeadMeta(lead.id, { followUp: e2.target.value })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" /></label>
+                  <label className="text-sm font-semibold">STATUS<select value={m.status} onChange={(e2) => void saveLeadMeta(lead.id, { status: e2.target.value, history: addHistory(lead.id, `Status: ${e2.target.value}`) })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
+                  <label className="text-sm font-semibold">NEXT ACTION<select value={m.nextAction} onChange={(e2) => void saveLeadMeta(lead.id, { nextAction: e2.target.value, history: addHistory(lead.id, `Next action: ${e2.target.value}`) })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal">{NEXT_ACTIONS.map((action) => <option key={action}>{action}</option>)}</select></label>
+                  <label className="text-sm font-semibold">FOLLOW-UP DATE<input type="date" value={m.followUp} onChange={(e2) => void saveLeadMeta(lead.id, { followUp: e2.target.value, history: addHistory(lead.id, `Follow-up set: ${e2.target.value}`) })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" /></label>
                   <label className="text-sm font-semibold">NOTE<input value={m.note} onChange={(e2) => void saveLeadMeta(lead.id, { note: e2.target.value })} className="mt-1 w-full border rounded-xl px-3 py-2 font-normal" /></label>
                 </div>
               </div>
