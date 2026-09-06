@@ -11,12 +11,14 @@ type Meta = {
   dealValue?: number | string;
   sellerCommissionRate?: number | string;
   buyerCommissionRate?: number | string;
+  commissionStatus?: string;
   history?: HistoryItem[];
 };
 
 const todayIST = () =>
   new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
@@ -49,6 +51,7 @@ export default function TodayActionCenter() {
   useEffect(() => { if (password) load(); }, []);
 
   const today = todayIST();
+
   const salesActions = useMemo(() => leads
     .map((lead) => ({ lead, meta: meta[lead.id] || {} }))
     .filter(({ lead, meta: m }) =>
@@ -69,6 +72,7 @@ export default function TodayActionCenter() {
   const pendingAmount = (m: Meta) => Math.max(0,
     (Number(m.dealValue) || 0) * (Number(m.sellerCommissionRate ?? 1) + Number(m.buyerCommissionRate ?? 0)) / 100 - (Number(m.commissionReceived) || 0)
   );
+
   const overdue = commissions.filter(({ meta: m }) => m.commissionDueDate && m.commissionDueDate < today);
   const dueToday = commissions.filter(({ meta: m }) => m.commissionDueDate === today);
   const upcoming = commissions.filter(({ meta: m }) => m.commissionDueDate && m.commissionDueDate > today);
@@ -81,6 +85,12 @@ export default function TodayActionCenter() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
       body: JSON.stringify({ id, meta: next }),
     });
+  };
+
+  const pipelineAction = async (lead: Lead, action: string, status: string, nextAction = action) => {
+    const history = [...(meta[lead.id]?.history || []), { action, at: new Date().toISOString() }];
+    await save(lead.id, { history, nextAction, followUp: action === 'Follow-up' ? today : meta[lead.id]?.followUp });
+    await save(lead.id, { status } as Partial<Meta>);
   };
 
   const call = (lead: Lead, m: Meta) => {
@@ -115,7 +125,7 @@ export default function TodayActionCenter() {
         <div className="p-5 border-b flex items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-[#1A365D]">🎯 Today’s Action Center</h2>
-            <p className="text-sm text-slate-500 mt-1">Sales follow-ups and commission collection, prioritized for today.</p>
+            <p className="text-sm text-slate-500 mt-1">One-click sales follow-up and commission collection workflow.</p>
           </div>
           <button onClick={load} className="rounded-lg border px-3 py-2 text-sm font-semibold">{loading ? 'Loading…' : '↻ Refresh'}</button>
         </div>
@@ -133,12 +143,22 @@ export default function TodayActionCenter() {
             <div>
               <h3 className="font-bold text-[#1A365D] mb-2">🔥 Priority Sales Actions</h3>
               {salesActions.slice(0, 10).map(({ lead, meta: m }) => (
-                <div key={lead.id} className="border rounded-xl p-3 mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div><b>{lead.name || 'Lead'}</b><div className="text-xs text-slate-500">{m.priority || 'Normal'} · {m.nextAction || 'Follow-up'} · {m.followUp || 'Due today'}</div></div>
+                <div key={lead.id} className="border rounded-xl p-3 mb-2 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <b>{lead.name || 'Lead'}</b>
+                      <div className="text-xs text-slate-500">{m.priority || 'Normal'} · {lead.status || 'New'} · {m.nextAction || 'Follow-up'} · {m.followUp || 'Due today'}</div>
+                    </div>
+                    <div className="text-xs font-semibold text-slate-600">One-click workflow</div>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => call(lead, m)} className="rounded-lg bg-[#1A365D] px-3 py-2 text-xs text-white">📞 Call</button>
                     <button onClick={() => whatsapp(lead, `Hello ${lead.name || ''}, following up regarding your property requirement. Please let me know a convenient time to connect.`)} className="rounded-lg border px-3 py-2 text-xs">💬 WhatsApp</button>
-                    <button onClick={() => save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">📅 Today</button>
+                    <button onClick={() => pipelineAction(lead, 'Contacted', 'Contacted', 'Follow-up')} className="rounded-lg border px-3 py-2 text-xs">✅ Contacted</button>
+                    <button onClick={() => pipelineAction(lead, 'Interested', 'Interested', 'Follow-up')} className="rounded-lg border px-3 py-2 text-xs">👍 Interested</button>
+                    <button onClick={() => pipelineAction(lead, 'Site Visit', 'Site Visit', 'Site Visit')} className="rounded-lg border px-3 py-2 text-xs">📅 Site Visit</button>
+                    <button onClick={() => pipelineAction(lead, 'Negotiation', 'Negotiation', 'Negotiation')} className="rounded-lg border px-3 py-2 text-xs">🤝 Negotiation</button>
+                    <button onClick={() => save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">🔄 Follow-up Today</button>
                   </div>
                 </div>
               ))}
@@ -150,13 +170,23 @@ export default function TodayActionCenter() {
               <h3 className="font-bold text-[#1A365D] mb-2">💰 Commission Collection Actions</h3>
               {commissions.map(({ lead, meta: m }) => (
                 <div key={lead.id} className="border rounded-xl p-3 mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div><b>{lead.name || 'Closed Deal'}</b><div className="text-xs text-slate-500">{m.commissionDueDate || 'No due date'} · Pending {money(pendingAmount(m))}</div></div>
+                  <div>
+                    <b>{lead.name || 'Closed Deal'}</b>
+                    <div className="text-xs text-slate-500">{m.commissionDueDate || 'No due date'} · Pending {money(pendingAmount(m))}</div>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => whatsapp(lead, `Hello ${lead.name || ''}, this is a follow-up regarding the pending commission/payment of ${money(pendingAmount(m))}. Please let me know the expected payment date.`)} className="rounded-lg bg-[#1A365D] px-3 py-2 text-xs text-white">💬 Collection Follow-up</button>
                     <button onClick={() => save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">📅 Add to Today</button>
+                    <button onClick={() => save(lead.id, { commissionReceived: Number(m.dealValue || 0) * (Number(m.sellerCommissionRate ?? 1) + Number(m.buyerCommissionRate ?? 0)) / 100, commissionStatus: 'Received' })} className="rounded-lg border px-3 py-2 text-xs">✅ Mark Received</button>
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {!salesActions.length && !commissions.length && (
+            <div className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">
+              ✅ No urgent sales or commission collection actions right now.
             </div>
           )}
         </div>
