@@ -13,7 +13,7 @@ type LeadMeta = {
   callHistory?: CallLog[]; history?: HistoryItem[];
 };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
-const PRIORITIES = new Set(['Hot', 'Warm', 'Cold']);
+const PRIORITIES = new Set(['Very Hot', 'Hot', 'Warm', 'Cold']);
 const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action']);
 const COMMISSION_STATUS = new Set(['Pending', 'Partial', 'Received']);
 const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other']);
@@ -32,10 +32,6 @@ async function readMeta(): Promise<Record<string, LeadMeta>> {
   } catch { return {}; }
 }
 async function writeMeta(data: Record<string, LeadMeta>) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' }); }
-function statusForAction(action: string, current: string) {
-  const map: Record<string, string> = { Call: 'Contacted', WhatsApp: 'Contacted', 'Send Property Options': 'Contacted', 'Follow-up': 'Contacted', 'Site Visit': 'Site Visit', Meeting: 'Interested', Negotiation: 'Negotiation' };
-  return map[action] || current;
-}
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
@@ -55,9 +51,14 @@ export default async function handler(request: any, response: any) {
       const rawActivity = Array.isArray(incoming.history) ? incoming.history : (current.history || []);
       const history = rawActivity.slice(-50).map((entry: any) => ({ id:String(entry?.id||''), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
       const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory, history };
+      if (incoming.activity) {
+        const activity = incoming.activity as any;
+        const event: HistoryItem = { id: `activity-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, at: new Date().toISOString(), action: String(activity.action || 'CRM update').slice(0,100), note: String(activity.note || '').slice(0,1000) };
+        normalized.history = [...history, event].slice(-50);
+      }
       if (incoming.smartFollowupApplied === true) {
         const event: HistoryItem = { id: `smart-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, at: new Date().toISOString(), action: `Smart Follow-up: ${normalized.nextAction}`, note: `Recommended action applied${normalized.followUp ? ` for ${normalized.followUp}` : ''}.` };
-        normalized.history = [...history, event].slice(-50);
+        normalized.history = [...(normalized.history || history), event].slice(-50);
       }
       if (normalized.status === 'Closed' && !normalized.closedDate) normalized.closedDate = new Date().toISOString().slice(0,10);
       const optionalFields = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo'];
