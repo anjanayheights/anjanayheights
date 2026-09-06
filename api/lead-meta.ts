@@ -1,6 +1,7 @@
 import { head, put } from '@vercel/blob';
 
 type CallLog = { id: string; at: string; outcome: string; note: string };
+type HistoryItem = { id: string; at: string; action: string; note: string };
 type LeadMeta = {
   status: string; followUp: string; note: string; priority: string; nextAction: string;
   propertyType: string; location: string; budget: string; timeline: string;
@@ -8,7 +9,8 @@ type LeadMeta = {
   negotiationNotes?: string; closedDate?: string; closedProperty?: string; finalRemarks?: string;
   sellerCommissionRate?: string; buyerCommissionRate?: string; commissionReceived?: string; commissionStatus?: string;
   commissionNotes?: string; sellerPaymentDate?: string; sellerPaymentMode?: string; sellerReceiptNo?: string;
-  buyerPaymentDate?: string; buyerPaymentMode?: string; buyerReceiptNo?: string; callHistory?: CallLog[];
+  buyerPaymentDate?: string; buyerPaymentMode?: string; buyerReceiptNo?: string;
+  callHistory?: CallLog[]; history?: HistoryItem[];
 };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const PRIORITIES = new Set(['Hot', 'Warm', 'Cold']);
@@ -23,17 +25,16 @@ async function readMeta(): Promise<Record<string, LeadMeta>> {
   try {
     const info = await head(META_PATH);
     const separator = info.url.includes('?') ? '&' : '?';
-    const result = await fetch(`${info.url}${separator}crm_refresh=${Date.now()}-${Math.random()}`, {
-      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}`, 'Cache-Control': 'no-cache' },
-      cache: 'no-store'
-    });
+    const result = await fetch(`${info.url}${separator}crm_refresh=${Date.now()}-${Math.random()}`, { headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}`, 'Cache-Control': 'no-cache' }, cache: 'no-store' });
     if (!result.ok) return {};
     const data = await result.json();
     return data && typeof data === 'object' ? data : {};
   } catch { return {}; }
 }
-async function writeMeta(data: Record<string, LeadMeta>) {
-  await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' });
+async function writeMeta(data: Record<string, LeadMeta>) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json' }); }
+function statusForAction(action: string, current: string) {
+  const map: Record<string, string> = { Call: 'Contacted', WhatsApp: 'Contacted', 'Send Property Options': 'Contacted', 'Follow-up': 'Contacted', 'Site Visit': 'Site Visit', Meeting: 'Interested', Negotiation: 'Negotiation' };
+  return map[action] || current;
 }
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
@@ -43,15 +44,24 @@ export default async function handler(request: any, response: any) {
       const body = request.body && typeof request.body === 'object' ? request.body : {};
       const leadId = String(body.leadId || body.id || '').trim();
       if (!leadId) return send(response, 400, { error: 'leadId is required' });
-      const all = await readMeta(); const current = all[leadId] || { status:'New', followUp:'', note:'', priority:'Warm', nextAction:'Call', propertyType:'', location:'', budget:'', timeline:'', callHistory:[] };
+      const all = await readMeta();
+      const current = all[leadId] || { status:'New', followUp:'', note:'', priority:'Warm', nextAction:'Call', propertyType:'', location:'', budget:'', timeline:'', callHistory:[], history:[] };
       const incoming = body.meta && typeof body.meta === 'object' ? body.meta : {};
-      const status = String(incoming.status ?? current.status); const priority = String(incoming.priority ?? current.priority); const nextAction = String(incoming.nextAction ?? current.nextAction);
+      const status = String(incoming.status ?? current.status);
+      const priority = String(incoming.priority ?? current.priority);
+      const nextAction = String(incoming.nextAction ?? current.nextAction);
       const rawHistory = Array.isArray(incoming.callHistory) ? incoming.callHistory : (current.callHistory || []);
       const callHistory = rawHistory.slice(-30).map((entry: any) => ({ id:String(entry?.id||''), at:String(entry?.at||''), outcome:String(entry?.outcome||'').slice(0,50), note:String(entry?.note||'').slice(0,1000) })).filter((entry:CallLog)=>entry.id && entry.at && entry.outcome);
-      const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory };
+      const rawActivity = Array.isArray(incoming.history) ? incoming.history : (current.history || []);
+      const history = rawActivity.slice(-50).map((entry: any) => ({ id:String(entry?.id||''), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
+      const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory, history };
+      if (incoming.smartFollowupApplied === true) {
+        const event: HistoryItem = { id: `smart-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, at: new Date().toISOString(), action: `Smart Follow-up: ${normalized.nextAction}`, note: `Recommended action applied${normalized.followUp ? ` for ${normalized.followUp}` : ''}.` };
+        normalized.history = [...history, event].slice(-50);
+      }
+      if (normalized.status === 'Closed' && !normalized.closedDate) normalized.closedDate = new Date().toISOString().slice(0,10);
       const optionalFields = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo'];
       for (const field of optionalFields) if (incoming[field] !== undefined) normalized[field as keyof LeadMeta] = String(incoming[field] ?? '').slice(0,2000) as never;
-      if (normalized.status === 'Closed' && !normalized.closedDate) normalized.closedDate = new Date().toISOString().slice(0,10);
       if (normalized.commissionStatus && !COMMISSION_STATUS.has(normalized.commissionStatus)) normalized.commissionStatus='Pending';
       if (normalized.sellerPaymentMode && !PAYMENT_MODES.has(normalized.sellerPaymentMode)) normalized.sellerPaymentMode='Other';
       if (normalized.buyerPaymentMode && !PAYMENT_MODES.has(normalized.buyerPaymentMode)) normalized.buyerPaymentMode='Other';
