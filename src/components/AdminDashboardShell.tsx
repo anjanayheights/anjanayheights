@@ -5,6 +5,7 @@ import CommissionCollectionTracker from './CommissionCollectionTracker';
 import TodayActionCenter from './TodayActionCenter';
 import LeadDealConversion from './LeadDealConversion';
 import SmartFollowupPanel from './SmartFollowupPanel';
+import CRMAlertBanner from './CRMAlertBanner';
 
 export default function AdminDashboardShell() {
   return (
@@ -26,6 +27,7 @@ export default function AdminDashboardShell() {
           </div>
         </div>
       </div>
+      <CRMAlertBanner />
       <TodayActionCenter />
       <SmartFollowupPanel />
       <LeadDealConversion />
