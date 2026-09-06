@@ -22,8 +22,6 @@ function send(response: any, status: number, body: unknown) { return response.st
 async function readMeta(): Promise<Record<string, LeadMeta>> {
   try {
     const info = await head(META_PATH);
-    // Blob URLs can be CDN-cached even when the API response itself is no-store.
-    // Cache-bust the blob read so Refresh always sees the latest saved CRM metadata.
     const separator = info.url.includes('?') ? '&' : '?';
     const result = await fetch(`${info.url}${separator}crm_refresh=${Date.now()}-${Math.random()}`, {
       headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}`, 'Cache-Control': 'no-cache' },
@@ -43,7 +41,8 @@ export default async function handler(request: any, response: any) {
     if (request.method === 'GET') return send(response, 200, { meta: await readMeta() });
     if (request.method === 'POST') {
       const body = request.body && typeof request.body === 'object' ? request.body : {};
-      const leadId = String(body.leadId || '').trim(); if (!leadId) return send(response, 400, { error: 'leadId is required' });
+      const leadId = String(body.leadId || body.id || '').trim();
+      if (!leadId) return send(response, 400, { error: 'leadId is required' });
       const all = await readMeta(); const current = all[leadId] || { status:'New', followUp:'', note:'', priority:'Warm', nextAction:'Call', propertyType:'', location:'', budget:'', timeline:'', callHistory:[] };
       const incoming = body.meta && typeof body.meta === 'object' ? body.meta : {};
       const status = String(incoming.status ?? current.status); const priority = String(incoming.priority ?? current.priority); const nextAction = String(incoming.nextAction ?? current.nextAction);
