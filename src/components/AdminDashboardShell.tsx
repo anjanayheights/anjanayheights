@@ -1,4 +1,5 @@
 import LeadDashboard from './LeadDashboard';
+import LeadPriorityCenter from './LeadPriorityCenter';
 
 export default function AdminDashboardShell() {
   return (
@@ -18,6 +19,9 @@ export default function AdminDashboardShell() {
             <button onClick={() => { window.location.href = '/admin/requirements'; }} className="rounded-lg border border-[#1A365D] px-3 py-2 text-sm font-semibold text-[#1A365D]">🎯 Buyer Requirements</button>
           </div>
         </div>
+      </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
+        <LeadPriorityCenter />
       </div>
       <LeadDashboard />
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-white/98 backdrop-blur shadow-[0_-4px_16px_rgba(0,0,0,0.08)] px-2 py-2">
