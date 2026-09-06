@@ -1,10 +1,6 @@
 import { list, put } from '@vercel/blob';
 
 const PREFIX = 'analytics/visitors/';
-const blobAuth = {
-  oidcToken: process.env.VERCEL_OIDC_TOKEN,
-  storeId: process.env.BLOB_STORE_ID,
-};
 
 function send(response: any, status: number, body: unknown) {
   return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
@@ -16,11 +12,21 @@ function cookieValue(request: any, name: string) {
   return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
 }
 
+async function countVisitors() {
+  let total = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await list({ prefix: PREFIX, cursor });
+    total += page.blobs?.length || 0;
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+  return total;
+}
+
 export default async function handler(request: any, response: any) {
   try {
     if (request.method === 'GET') {
-      const result = await list({ prefix: PREFIX, ...blobAuth });
-      return send(response, 200, { totalViewers: result.blobs.length });
+      return send(response, 200, { totalViewers: await countVisitors() });
     }
 
     if (request.method === 'POST') {
@@ -38,9 +44,7 @@ export default async function handler(request: any, response: any) {
         addRandomSuffix: false,
         allowOverwrite: false,
         contentType: 'application/json',
-        ...blobAuth,
       }).catch((error: any) => {
-        // A duplicate visitor blob simply means this visitor was already counted.
         if (!String(error?.message || '').toLowerCase().includes('exist')) throw error;
       });
 
