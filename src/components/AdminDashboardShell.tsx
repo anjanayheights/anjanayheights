@@ -1,6 +1,7 @@
 import LeadDashboard from './LeadDashboard';
 import LeadPriorityCenter from './LeadPriorityCenter';
 import RevenueCommissionSummary from './RevenueCommissionSummary';
+import CommissionCollectionTracker from './CommissionCollectionTracker';
 
 export default function AdminDashboardShell() {
   return (
@@ -22,6 +23,7 @@ export default function AdminDashboardShell() {
         </div>
       </div>
       <RevenueCommissionSummary />
+      <CommissionCollectionTracker />
       <div className="max-w-7xl mx-auto px-4 md:px-8 pt-6">
         <LeadPriorityCenter />
       </div>
