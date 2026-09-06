@@ -8,6 +8,8 @@ export default function AdminDashboardShell() {
           <p className="text-sm font-semibold text-[#1A365D]">Anjanay Heights CRM</p>
           <div className="hidden md:flex gap-2">
             <button onClick={() => { window.location.href = '/admin/telecalling'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">📞 Telecalling CRM</button>
+            <button onClick={() => { window.location.href = '/admin/leads-growth'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🚀 Lead Generation</button>
+            <button onClick={() => { window.location.href = '/admin/lead-quality'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🔥 Lead Quality</button>
             <button onClick={() => { window.location.href = '/admin/ai'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🤖 AI Lead Assistant</button>
             <button onClick={() => { window.location.href = '/admin/pipeline'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">📈 Sales Pipeline</button>
             <button onClick={() => { window.location.href = '/admin/matches'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🎯 Matched Properties</button>
@@ -18,14 +20,11 @@ export default function AdminDashboardShell() {
       </div>
       <LeadDashboard />
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-white/98 backdrop-blur shadow-[0_-4px_16px_rgba(0,0,0,0.08)] px-2 py-2">
-        <div className="grid grid-cols-7 gap-1 max-w-lg mx-auto">
+        <div className="grid grid-cols-4 gap-1 max-w-lg mx-auto">
           <button onClick={() => { window.location.href = '/admin'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">📊<span className="block mt-0.5">Leads</span></button>
+          <button onClick={() => { window.location.href = '/admin/lead-quality'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🔥<span className="block mt-0.5">Quality</span></button>
           <button onClick={() => { window.location.href = '/admin/telecalling'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">📞<span className="block mt-0.5">Calls</span></button>
-          <button onClick={() => { window.location.href = '/admin/ai'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🤖<span className="block mt-0.5">AI</span></button>
           <button onClick={() => { window.location.href = '/admin/pipeline'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">📈<span className="block mt-0.5">Pipeline</span></button>
-          <button onClick={() => { window.location.href = '/admin/matches'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🎯<span className="block mt-0.5">Matches</span></button>
-          <button onClick={() => { window.location.href = '/admin/properties'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🏠<span className="block mt-0.5">Properties</span></button>
-          <button onClick={() => { window.location.href = '/admin/requirements'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🎯<span className="block mt-0.5">Buyers</span></button>
         </div>
       </nav>
     </div>
