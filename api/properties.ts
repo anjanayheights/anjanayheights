@@ -1,228 +1,38 @@
 import { get, list, put, del } from '@vercel/blob';
 
 type Property = {
-  id: string;
-  title: string;
-  propertyType: string;
-  location: string;
-  price: string;
-  minBudget: number | null;
-  maxBudget: number | null;
-  area: string;
-  bedrooms: string;
-  status: 'Available' | 'Hold' | 'Sold' | 'Inactive';
-  description: string;
-  createdAt: string;
+  id: string; title: string; propertyType: string; location: string; price: string;
+  minBudget: number | null; maxBudget: number | null; area: string; bedrooms: string;
+  status: 'Available' | 'Hold' | 'Sold' | 'Inactive'; description: string; createdAt: string;
+  photos?: string[];
 };
 
 const PATH = 'crm/properties.json';
 const ITEM_PREFIX = 'crm/properties/item-';
+const PHOTO_PREFIX = 'crm/properties/photos/';
 const RECOVERY_MARKER = 'crm/properties/recovery-seeded-v2.json';
 const STATUSES = new Set(['Available', 'Hold', 'Sold', 'Inactive']);
 
 const RECOVERY_PROPERTIES: Property[] = [
-  {
-    id: 'recovered-aminabad-710',
-    title: '710 sq ft Flat',
-    propertyType: 'Flat',
-    location: 'Sector 1, Aminabad, Greater Noida',
-    price: '₹40 Lakhs',
-    minBudget: 4000000,
-    maxBudget: 4000000,
-    area: '710 sq ft',
-    bedrooms: '',
-    status: 'Available',
-    description: 'Flat in Sector 1, Aminabad, Greater Noida. Seller: Arun.',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'recovered-haridwar-110-bigha',
-    title: '110 Bigha Commercial Land',
-    propertyType: 'Commercial Land',
-    location: 'Haridwar',
-    price: '₹47 Lakhs per Bigha',
-    minBudget: 517000000,
-    maxBudget: 517000000,
-    area: '110 bigha',
-    bedrooms: '',
-    status: 'Available',
-    description: '110 bigha commercial land in Haridwar. Demand: ₹47 Lakhs per bigha. Approx. total value: ₹51.70 Cr. Seller: Arun.',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'recovered-faridabad-hospital',
-    title: '100 Beds Hospital',
-    propertyType: 'Hospital',
-    location: 'Faridabad',
-    price: '₹55 Cr · 3000 sq yard',
-    minBudget: 550000000,
-    maxBudget: 550000000,
-    area: '3000 sq yard',
-    bedrooms: '',
-    status: 'Available',
-    description: 'Operational 100-bed hospital. Seller: Rohit Sharma. Seller contact is kept private and should be shared directly when needed.',
-    createdAt: new Date().toISOString(),
-  },
+  { id:'recovered-aminabad-710', title:'710 sq ft Flat', propertyType:'Flat', location:'Sector 1, Aminabad, Greater Noida', price:'₹40 Lakhs', minBudget:4000000, maxBudget:4000000, area:'710 sq ft', bedrooms:'', status:'Available', description:'Flat in Sector 1, Aminabad, Greater Noida. Seller: Arun.' },
+  { id:'recovered-haridwar-110-bigha', title:'110 Bigha Commercial Land', propertyType:'Commercial Land', location:'Haridwar', price:'₹47 Lakhs per Bigha', minBudget:517000000, maxBudget:517000000, area:'110 bigha', bedrooms:'', status:'Available', description:'110 bigha commercial land in Haridwar. Demand: ₹47 Lakhs per bigha. Approx. total value: ₹51.70 Cr. Seller: Arun.' },
+  { id:'recovered-faridabad-hospital', title:'100 Beds Hospital', propertyType:'Hospital', location:'Faridabad', price:'₹55 Cr · 3000 sq yard', minBudget:550000000, maxBudget:550000000, area:'3000 sq yard', bedrooms:'', status:'Available', description:'Operational 100-bed hospital. Seller: Rohit Sharma. Seller contact is kept private and should be shared directly when needed.' },
 ];
 
-function getHeader(request: any, name: string) {
-  const value = request?.headers?.[name.toLowerCase()];
-  return Array.isArray(value) ? value[0] || '' : value || '';
-}
+function getHeader(request:any,name:string){const value=request?.headers?.[name.toLowerCase()];return Array.isArray(value)?value[0]||'':value||'';}
+function authorized(request:any){const expected=process.env.DASHBOARD_PASSWORD||'';return Boolean(expected&&getHeader(request,'authorization')===`Bearer ${expected}`);}
+function send(response:any,status:number,body:unknown){return response.status(status).setHeader('Cache-Control','no-store').json(body);}
+function parseBody(request:any){const body=request?.body;if(body&&typeof body==='object'&&!Buffer.isBuffer(body))return body;if(typeof body==='string'){try{return JSON.parse(body);}catch{return {};}}return {};}
+async function readLegacyProperties():Promise<Property[]>{const result=await get(PATH,{access:'private'});if(!result||result.statusCode!==200||!result.stream)throw new Error(`Blob read failed with status ${result?.statusCode??404}`);const text=await new Response(result.stream).text();const data=JSON.parse(text);if(!Array.isArray(data))throw new Error('Property inventory data is invalid');return data;}
+async function readItemProperties():Promise<Property[]>{const blobs:any[]=[];let cursor:string|undefined;do{const page=await list({prefix:ITEM_PREFIX,cursor});blobs.push(...(page.blobs||[]));cursor=page.hasMore?page.cursor:undefined;}while(cursor);const properties:Property[]=[];for(const blob of blobs){const result=await get(blob.pathname,{access:'private'});if(!result||result.statusCode!==200||!result.stream)continue;try{const value=JSON.parse(await new Response(result.stream).text());if(value&&typeof value==='object'&&value.id)properties.push(value as Property);}catch{}}return properties;}
+async function readProperties():Promise<Property[]>{const items=await readItemProperties();if(items.length>0)return items;return readLegacyProperties();}
+async function itemPath(id:string){return `${ITEM_PREFIX}${encodeURIComponent(id)}.json`;}
+async function ensureItemStorage(properties:Property[]){for(const property of properties)await put(await itemPath(property.id),JSON.stringify(property),{access:'private',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});}
+async function seedRecoveredPropertiesOnce(){const marker=await get(RECOVERY_MARKER,{access:'private'});if(marker?.statusCode===200)return;const existing=await readProperties();const existingLocations=new Set(existing.map(p=>p.location.trim().toLowerCase()));const missing=RECOVERY_PROPERTIES.filter(p=>!existingLocations.has(p.location.trim().toLowerCase()));if(missing.length)await ensureItemStorage(missing);await put(RECOVERY_MARKER,JSON.stringify({seededAt:new Date().toISOString(),ids:missing.map(p=>p.id)}),{access:'private',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});}
+function cleanProperty(input:any,existing?:Property):Property{const id=String(input.id||existing?.id||crypto.randomUUID());const status=String(input.status||existing?.status||'Available');const incomingPhotos=Array.isArray(input.photos)?input.photos:(existing?.photos||[]);return{id,title:String(input.title??existing?.title??'').trim().slice(0,160),propertyType:String(input.propertyType??existing?.propertyType??'').trim().slice(0,80),location:String(input.location??existing?.location??'').trim().slice(0,160),price:String(input.price??existing?.price??'').trim().slice(0,80),minBudget:input.minBudget===''||input.minBudget==null?(existing?.minBudget??null):Number(input.minBudget)||0,maxBudget:input.maxBudget===''||input.maxBudget==null?(existing?.maxBudget??null):Number(input.maxBudget)||0,area:String(input.area??existing?.area??'').trim().slice(0,80),bedrooms:String(input.bedrooms??existing?.bedrooms??'').trim().slice(0,40),status:STATUSES.has(status)?status as Property['status']:'Available',description:String(input.description??existing?.description??'').trim().slice(0,2000),createdAt:existing?.createdAt||new Date().toISOString(),photos:incomingPhotos.filter((x:any)=>typeof x==='string'&&x.startsWith('https://')).slice(0,12)};}
 
-function authorized(request: any) {
-  const expected = process.env.DASHBOARD_PASSWORD || '';
-  return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`);
-}
-
-function send(response: any, status: number, body: unknown) {
-  return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
-}
-
-function parseBody(request: any) {
-  const body = request?.body;
-  if (body && typeof body === 'object' && !Buffer.isBuffer(body)) return body;
-  if (typeof body === 'string') {
-    try { return JSON.parse(body); } catch { return {}; }
-  }
-  return {};
-}
-
-async function readLegacyProperties(): Promise<Property[]> {
-  const result = await get(PATH, { access: 'private' });
-  if (!result || result.statusCode !== 200 || !result.stream) {
-    throw new Error(`Blob read failed with status ${result?.statusCode ?? 404}`);
-  }
-  const text = await new Response(result.stream).text();
-  const data = JSON.parse(text);
-  if (!Array.isArray(data)) throw new Error('Property inventory data is invalid');
-  return data;
-}
-
-async function readItemProperties(): Promise<Property[]> {
-  const blobs: any[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await list({ prefix: ITEM_PREFIX, cursor });
-    blobs.push(...(page.blobs || []));
-    cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
-
-  const properties: Property[] = [];
-  for (const blob of blobs) {
-    const result = await get(blob.pathname, { access: 'private' });
-    if (!result || result.statusCode !== 200 || !result.stream) continue;
-    try {
-      const value = JSON.parse(await new Response(result.stream).text());
-      if (value && typeof value === 'object' && value.id) properties.push(value as Property);
-    } catch {
-      // Ignore an invalid individual item instead of breaking the whole inventory.
-    }
-  }
-  return properties;
-}
-
-async function readProperties(): Promise<Property[]> {
-  const items = await readItemProperties();
-  if (items.length > 0) return items;
-  return readLegacyProperties();
-}
-
-async function itemPath(id: string) {
-  return `${ITEM_PREFIX}${encodeURIComponent(id)}.json`;
-}
-
-async function ensureItemStorage(properties: Property[]) {
-  for (const property of properties) {
-    await put(await itemPath(property.id), JSON.stringify(property), {
-      access: 'private',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      contentType: 'application/json',
-    });
-  }
-}
-
-async function seedRecoveredPropertiesOnce() {
-  const marker = await get(RECOVERY_MARKER, { access: 'private' });
-  if (marker?.statusCode === 200) return;
-
-  const existing = await readProperties();
-  const existingLocations = new Set(existing.map(p => p.location.trim().toLowerCase()));
-  const missing = RECOVERY_PROPERTIES.filter(p => !existingLocations.has(p.location.trim().toLowerCase()));
-
-  if (missing.length) await ensureItemStorage(missing);
-  await put(RECOVERY_MARKER, JSON.stringify({ seededAt: new Date().toISOString(), ids: missing.map(p => p.id) }), {
-    access: 'private',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: 'application/json',
-  });
-}
-
-function cleanProperty(input: any, existing?: Property): Property {
-  const id = String(input.id || existing?.id || crypto.randomUUID());
-  const status = String(input.status || existing?.status || 'Available');
-  return {
-    id,
-    title: String(input.title ?? existing?.title ?? '').trim().slice(0, 160),
-    propertyType: String(input.propertyType ?? existing?.propertyType ?? '').trim().slice(0, 80),
-    location: String(input.location ?? existing?.location ?? '').trim().slice(0, 160),
-    price: String(input.price ?? existing?.price ?? '').trim().slice(0, 80),
-    minBudget: input.minBudget === '' || input.minBudget == null ? (existing?.minBudget ?? null) : Number(input.minBudget) || 0,
-    maxBudget: input.maxBudget === '' || input.maxBudget == null ? (existing?.maxBudget ?? null) : Number(input.maxBudget) || 0,
-    area: String(input.area ?? existing?.area ?? '').trim().slice(0, 80),
-    bedrooms: String(input.bedrooms ?? existing?.bedrooms ?? '').trim().slice(0, 40),
-    status: STATUSES.has(status) ? status as Property['status'] : 'Available',
-    description: String(input.description ?? existing?.description ?? '').trim().slice(0, 2000),
-    createdAt: existing?.createdAt || new Date().toISOString(),
-  };
-}
-
-export default async function handler(request: any, response: any) {
-  if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
-  try {
-    if (request.method === 'GET') {
-      await seedRecoveredPropertiesOnce();
-      return send(response, 200, { properties: await readProperties() });
-    }
-
-    if (request.method === 'POST') {
-      const body = parseBody(request);
-      const action = String(body.action || 'upsert');
-      const all = await readProperties();
-
-      const itemBlobs = await list({ prefix: ITEM_PREFIX });
-      if (!itemBlobs.blobs?.length && all.length) await ensureItemStorage(all);
-
-      if (action === 'delete') {
-        const id = String(body.id || '');
-        const next = all.filter(p => p.id !== id);
-        if (next.length === all.length) return send(response, 404, { error: 'Property not found.' });
-        await del(await itemPath(id));
-        return send(response, 200, { ok: true, properties: next });
-      }
-
-      const existingIndex = all.findIndex(p => p.id === String(body.id || ''));
-      const property = cleanProperty(body, existingIndex >= 0 ? all[existingIndex] : undefined);
-      if (!property.title || !property.propertyType || !property.location) return send(response, 400, { error: 'Title, property type and location are required.' });
-
-      await put(await itemPath(property.id), JSON.stringify(property), {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        contentType: 'application/json',
-      });
-
-      const next = existingIndex >= 0
-        ? all.map((p, index) => index === existingIndex ? property : p)
-        : [property, ...all];
-      return send(response, 200, { ok: true, property, properties: next });
-    }
-
-    return send(response, 405, { error: 'Method not allowed' });
-  } catch (error) {
-    console.error('properties error', error);
-    return send(response, 500, { error: 'Unable to access property inventory.' });
-  }
-}
+export default async function handler(request:any,response:any){if(!authorized(request))return send(response,401,{error:'Unauthorized'});try{if(request.method==='GET'){await seedRecoveredPropertiesOnce();return send(response,200,{properties:await readProperties()});}if(request.method==='POST'){const body=parseBody(request);const action=String(body.action||'upsert');const all=await readProperties();const itemBlobs=await list({prefix:ITEM_PREFIX});if(!itemBlobs.blobs?.length&&all.length)await ensureItemStorage(all);
+if(action==='uploadPhoto'){const id=String(body.id||'');const dataUrl=String(body.dataUrl||'');const property=all.find(p=>p.id===id);if(!property)return send(response,404,{error:'Property not found.'});if(!dataUrl.startsWith('data:image/'))return send(response,400,{error:'Please upload an image file.'});if(dataUrl.length>4_000_000)return send(response,413,{error:'Image is too large. Please choose a smaller photo.'});const match=dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);if(!match)return send(response,400,{error:'Unsupported image format.'});const ext=match[1].includes('png')?'png':match[1].includes('webp')?'webp':'jpg';const photoId=`${id}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;const pathname=`${PHOTO_PREFIX}${encodeURIComponent(photoId)}.${ext}`;const blob=await put(pathname,Buffer.from(match[2],'base64'),{access:'public',addRandomSuffix:false,contentType:match[1]});const photos=[...(property.photos||[]),blob.url].slice(-12);const updated={...property,photos};await put(await itemPath(id),JSON.stringify(updated),{access:'private',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});return send(response,200,{ok:true,property:updated,properties:all.map(p=>p.id===id?updated:p)});}
+if(action==='deletePhoto'){const id=String(body.id||'');const url=String(body.url||'');const property=all.find(p=>p.id===id);if(!property)return send(response,404,{error:'Property not found.'});const photos=(property.photos||[]).filter(p=>p!==url);const updated={...property,photos};await put(await itemPath(id),JSON.stringify(updated),{access:'private',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});return send(response,200,{ok:true,property:updated,properties:all.map(p=>p.id===id?updated:p)});}
+if(action==='delete'){const id=String(body.id||'');const next=all.filter(p=>p.id!==id);if(next.length===all.length)return send(response,404,{error:'Property not found.'});await del(await itemPath(id));return send(response,200,{ok:true,properties:next});}
+const existingIndex=all.findIndex(p=>p.id===String(body.id||''));const property=cleanProperty(body,existingIndex>=0?all[existingIndex]:undefined);if(!property.title||!property.propertyType||!property.location)return send(response,400,{error:'Title, property type and location are required.'});await put(await itemPath(property.id),JSON.stringify(property),{access:'private',addRandomSuffix:false,allowOverwrite:true,contentType:'application/json'});const next=existingIndex>=0?all.map((p,index)=>index===existingIndex?property:p):[property,...all];return send(response,200,{ok:true,property,properties:next});}return send(response,405,{error:'Method not allowed'});}catch(error){console.error('properties error',error);return send(response,500,{error:'Unable to access property inventory.'});}}
