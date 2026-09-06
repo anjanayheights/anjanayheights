@@ -6,6 +6,7 @@ import TodayActionCenter from './TodayActionCenter';
 import LeadDealConversion from './LeadDealConversion';
 import SmartFollowupPanel from './SmartFollowupPanel';
 import CRMAlertBanner from './CRMAlertBanner';
+import WebsiteViewerCard from './WebsiteViewerCard';
 
 export default function AdminDashboardShell() {
   return (
@@ -28,6 +29,7 @@ export default function AdminDashboardShell() {
         </div>
       </div>
       <CRMAlertBanner />
+      <WebsiteViewerCard />
       <TodayActionCenter />
       <SmartFollowupPanel />
       <LeadDealConversion />
