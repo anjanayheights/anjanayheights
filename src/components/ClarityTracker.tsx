@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 
-const CLARITY_PROJECT_ID = import.meta.env.VITE_CLARITY_PROJECT_ID?.trim();
+// Vercel can override this with VITE_CLARITY_PROJECT_ID when configured.
+// The Clarity project ID is intentionally public because it is part of the client-side tracker URL.
+const CLARITY_PROJECT_ID = import.meta.env.VITE_CLARITY_PROJECT_ID?.trim() || 'yefp5shpej';
 
 declare global {
   interface Window {
