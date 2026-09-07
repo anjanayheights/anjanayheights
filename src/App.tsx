@@ -18,7 +18,7 @@ import SourceConversionFunnel from './components/SourceConversionFunnel';
 import TelecallingCRM from './components/TelecallingCRM';
 import LeadQualityCenter from './components/LeadQualityCenter';
 import DailyFollowupQueue from './components/DailyFollowupQueue';
-import CRMWorkspace from './components/CRMWorkspace';
+import CRMWorkspace from './components/CRMWorkspaceLive';
 import VisitorTracker from './components/VisitorTracker';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
