@@ -69,3 +69,5 @@ export default function App() {
     </div>
   );
 }
+
+// Sales team performance + assignment route is intentionally kept inside the existing admin router.
