@@ -21,6 +21,7 @@ import DailyFollowupQueue from './components/DailyFollowupQueue';
 import SalesTeamPerformance from './components/SalesTeamPerformance';
 import CRMWorkspace from './components/CRMWorkspaceLive';
 import VisitorTracker from './components/VisitorTracker';
+import ClarityTracker from './components/ClarityTracker';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
@@ -61,8 +62,9 @@ export default function App() {
   if (window.location.pathname === '/admin/source-funnel') return <SourceConversionFunnel />;
 
   return (
-    <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]">
+    <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]>
       <VisitorTracker />
+      <ClarityTracker />
       <Navbar />
       <main><Hero /><TrustBar /><About /><Services /><FeaturedProperties /><ImageGallery /><Locations /><WhyChooseUs /><HomeLoanSupport /><Testimonials /><FAQ /><Contact /></main>
       <Footer /><WhatsAppButton />
