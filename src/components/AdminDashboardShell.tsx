@@ -7,6 +7,7 @@ import LeadDealConversion from './LeadDealConversion';
 import SmartFollowupPanel from './SmartFollowupPanel';
 import CRMAlertBanner from './CRMAlertBanner';
 import WebsiteViewerCard from './WebsiteViewerCard';
+import SalesPerformanceSnapshot from './SalesPerformanceSnapshot';
 
 export default function AdminDashboardShell() {
   return (
@@ -32,6 +33,7 @@ export default function AdminDashboardShell() {
       <WebsiteViewerCard />
       <TodayActionCenter />
       <SmartFollowupPanel />
+      <SalesPerformanceSnapshot />
       <LeadDealConversion />
       <RevenueCommissionSummary />
       <CommissionCollectionTracker />
