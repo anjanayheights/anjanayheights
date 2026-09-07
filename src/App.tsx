@@ -18,6 +18,7 @@ import SourceConversionFunnel from './components/SourceConversionFunnel';
 import TelecallingCRM from './components/TelecallingCRM';
 import LeadQualityCenter from './components/LeadQualityCenter';
 import DailyFollowupQueue from './components/DailyFollowupQueue';
+import SalesTeamPerformance from './components/SalesTeamPerformance';
 import CRMWorkspace from './components/CRMWorkspaceLive';
 import VisitorTracker from './components/VisitorTracker';
 import Navbar from './components/Navbar';
@@ -39,6 +40,7 @@ import WhatsAppButton from './components/WhatsAppButton';
 export default function App() {
   if (window.location.pathname === '/admin') return <AdminDashboardShell />;
   if (window.location.pathname === '/admin/workspace') return <CRMWorkspace />;
+  if (window.location.pathname === '/admin/team-performance') return <SalesTeamPerformance />;
   if (window.location.pathname === '/admin/telecalling') return <TelecallingCRM />;
   if (window.location.pathname === '/admin/properties') return <PropertyInventory />;
   if (window.location.pathname === '/admin/recovery') return <PropertyRecovery />;
