@@ -42,23 +42,26 @@ export default function LeadDealConversion() {
 
   async function transition(lead: Lead, status: string, nextAction: string) {
     const old = meta[lead.id] || {};
-    const history = [...(old.history || []), { id: makeId(), action: `Status: ${status}`, at: new Date().toISOString() }].slice(-50);
-    const next: Meta = { ...old, status, nextAction, followUp: todayIST(), history };
-    if (status === 'Closed') {
-      next.commissionStatus = next.commissionStatus || 'Pending';
-      next.sellerCommissionRate = next.sellerCommissionRate || 1;
-    }
     setLoading(true);
     setError('');
     try {
       const r = await fetch('/api/lead-meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
-        body: JSON.stringify({ leadId: lead.id, meta: next })
+        body: JSON.stringify({
+          leadId: lead.id,
+          meta: {
+            status,
+            nextAction,
+            followUp: todayIST(),
+            activity: { id: makeId(), action: `Status: ${status}`, at: new Date().toISOString() },
+            ...(status === 'Closed' ? { commissionStatus: old.commissionStatus || 'Pending', sellerCommissionRate: old.sellerCommissionRate || 1 } : {})
+          }
+        })
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Could not save conversion update');
-      setMeta(v => ({ ...v, [lead.id]: data.meta || next }));
+      setMeta(v => ({ ...v, [lead.id]: data.meta || { ...old, status, nextAction, followUp: todayIST() } }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save conversion update');
     } finally { setLoading(false); }
