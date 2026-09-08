@@ -50,55 +50,22 @@ function isNotFound(error: unknown) {
 }
 async function readMeta(): Promise<{ data: Record<string, LeadMeta>; etag?: string }> {
   let info: any;
-  try {
-    info = await head(META_PATH, blobAuth);
-  } catch (error) {
-    if (isNotFound(error)) return { data: {}, etag: undefined };
-    throw error;
-  }
+  try { info = await head(META_PATH, blobAuth); } catch (error) { if (isNotFound(error)) return { data: {}, etag: undefined }; throw error; }
   if (!info?.url) throw new Error('CRM metadata blob URL unavailable');
   let result: any;
-  try {
-    result = await get(info.url, { access: 'private', useCache: false, ...blobAuth });
-  } catch (error) {
-    if (isNotFound(error)) return { data: {}, etag: undefined };
-    throw error;
-  }
-  if (!result || result.statusCode !== 200) {
-    const error = new Error(`CRM metadata read failed with status ${result?.statusCode ?? 'unknown'}`);
-    if (result?.statusCode === 404) return { data: {}, etag: undefined };
-    throw error;
-  }
+  try { result = await get(info.url, { access: 'private', useCache: false, ...blobAuth }); } catch (error) { if (isNotFound(error)) return { data: {}, etag: undefined }; throw error; }
+  if (!result || result.statusCode !== 200) { const error = new Error(`CRM metadata read failed with status ${result?.statusCode ?? 'unknown'}`); if (result?.statusCode === 404) return { data: {}, etag: undefined }; throw error; }
   if (!result.stream) throw new Error('CRM metadata response has no body');
   let data: unknown;
-  try {
-    data = await new Response(result.stream).json();
-  } catch (error) {
-    throw new Error(`CRM metadata JSON is invalid: ${String((error as any)?.message || error)}`);
-  }
+  try { data = await new Response(result.stream).json(); } catch (error) { throw new Error(`CRM metadata JSON is invalid: ${String((error as any)?.message || error)}`); }
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('CRM metadata has invalid root shape');
   const normalized = data as Record<string, LeadMeta>;
-  for (const leadId of Object.keys(normalized)) {
-    const history = Array.isArray(normalized[leadId]?.history) ? normalized[leadId].history : [];
-    normalized[leadId] = { ...normalized[leadId], history: dedupeRecentHistory(history) };
-  }
+  for (const leadId of Object.keys(normalized)) { const history = Array.isArray(normalized[leadId]?.history) ? normalized[leadId].history : []; normalized[leadId] = { ...normalized[leadId], history: dedupeRecentHistory(history) }; }
   return { data: normalized, etag: info.etag };
 }
-async function writeMeta(data: Record<string, LeadMeta>, etag?: string) {
-  await put(META_PATH, JSON.stringify(data), {
-    access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json',
-    ...(etag ? { ifMatch: etag } : {}), ...blobAuth
-  });
-}
-function mergeById<T extends { id: string }>(base: T[], incoming: T[], limit: number) {
-  const map = new Map<string, T>();
-  for (const item of [...base, ...incoming]) if (item?.id) map.set(item.id, item);
-  return [...map.values()].sort((a,b) => String(a.id).localeCompare(String(b.id))).slice(-limit);
-}
-function isWriteConflict(error: unknown) {
-  const value = error as any;
-  return value?.name === 'BlobPreconditionFailedError' || value?.constructor?.name === 'BlobPreconditionFailedError' || /precondition|etag/i.test(String(value?.message || ''));
-}
+async function writeMeta(data: Record<string, LeadMeta>, etag?: string) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...(etag ? { ifMatch: etag } : {}), ...blobAuth }); }
+function mergeById<T extends { id: string }>(base: T[], incoming: T[], limit: number) { const map = new Map<string, T>(); for (const item of [...base, ...incoming]) if (item?.id) map.set(item.id, item); return [...map.values()].sort((a,b) => String(a.id).localeCompare(String(b.id))).slice(-limit); }
+function isWriteConflict(error: unknown) { const value = error as any; return value?.name === 'BlobPreconditionFailedError' || value?.constructor?.name === 'BlobPreconditionFailedError' || /precondition|etag/i.test(String(value?.message || '')); }
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
@@ -124,7 +91,7 @@ export default async function handler(request: any, response: any) {
         let history = dedupeRecentHistory(mergeById(current.history || [], incomingHistory, 50));
         const operational = hasDealPayload ? current : null;
         const normalized: LeadMeta = { ...current,
-          status:STATUSES.has(status)?status:'New',
+          status:STATUSES.has(status)?status:current.status,
           followUp:operational ? current.followUp : String(incoming.followUp ?? current.followUp ?? '').slice(0,10),
           note:operational ? current.note : String(incoming.note ?? current.note ?? '').slice(0,2000),
           priority:operational ? current.priority : (PRIORITIES.has(priority)?priority:'Warm'),
@@ -158,12 +125,8 @@ export default async function handler(request: any, response: any) {
         if (normalized.buyerPaymentMode && !PAYMENT_MODES.has(normalized.buyerPaymentMode)) normalized.buyerPaymentMode='Other';
         if (normalized.paymentMode && !PAYMENT_MODES.has(normalized.paymentMode)) normalized.paymentMode='Other';
         all[leadId]=normalized;
-        try {
-          await writeMeta(all, snapshot.etag);
-          return send(response,200,{ok:true,leadId,meta:normalized});
-        } catch (error) {
-          if (!isWriteConflict(error) || attempt === MAX_WRITE_RETRIES - 1) throw error;
-        }
+        try { await writeMeta(all, snapshot.etag); return send(response,200,{ok:true,leadId,meta:normalized}); }
+        catch (error) { if (!isWriteConflict(error) || attempt === MAX_WRITE_RETRIES - 1) throw error; }
       }
     }
     return send(response,405,{error:'Method not allowed'});
