@@ -32,11 +32,10 @@ export default function CommissionCollectionTracker() {
     const password = sessionStorage.getItem('anjanay-heights-crm-password') || '';
     if (!password) return;
     setSaving(id);
-    const next = { ...(meta[id] || {}), ...patch };
     try {
-      const res = await fetch('/api/lead-meta', { method: 'POST', headers: { Authorization: `Bearer ${password}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: id, meta: next }) });
+      const res = await fetch('/api/lead-meta', { method: 'POST', headers: { Authorization: `Bearer ${password}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ leadId: id, meta: patch }) });
       if (!res.ok) throw new Error('save failed');
-      setMeta(prev => ({ ...prev, [id]: next }));
+      setMeta(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
     } catch { alert('Payment details save nahi ho paye. Please try again.'); }
     finally { setSaving(null); }
   };
