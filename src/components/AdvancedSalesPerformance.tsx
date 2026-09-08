@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+// Advanced sales performance: conversion, source quality and weighted forecast.
 type Lead = { id: string; name?: string; source?: string; createdAt?: string };
 type Meta = { status?: string; dealValue?: string | number; closingProbability?: string | number; followUp?: string };
 
