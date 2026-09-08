@@ -9,6 +9,7 @@ import SalesPipeline from './components/SalesPipeline';
 import DealDesk from './components/DealDesk';
 import RevenueDashboard from './components/RevenueDashboard';
 import CommissionDashboard from './components/CommissionDashboard';
+import ManagementDashboard from './components/ManagementDashboard';
 import BuyerRequirements from './components/BuyerRequirements';
 import AiLeadAssistant from './components/AiLeadAssistant';
 import LeadGenerationCenter from './components/LeadGenerationCenter';
@@ -42,6 +43,7 @@ import WhatsAppButton from './components/WhatsAppButton';
 
 export default function App() {
   if (window.location.pathname === '/admin') return <AdminDashboardShell />;
+  if (window.location.pathname === '/admin/management') return <ManagementDashboard />;
   if (window.location.pathname === '/admin/workspace') return <CRMWorkspace />;
   if (window.location.pathname === '/admin/team-performance') return <SalesTeamPerformance />;
   if (window.location.pathname === '/admin/telecalling') return <TelecallingCRM />;
