@@ -73,7 +73,10 @@ export default function AdvancedSalesPerformance() {
             <h2 className="text-xl font-bold text-[#1A365D]">🚀 Advanced Sales Performance</h2>
             <p className="text-sm text-slate-500 mt-1">Conversion, source quality and forecast intelligence from live CRM data.</p>
           </div>
-          <span className="text-xs font-semibold rounded-full border px-3 py-1">Live CRM view</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold rounded-full border px-3 py-1">Live CRM view</span>
+            <a href="/admin/team-performance" className="rounded-lg bg-[#1A365D] text-white px-3 py-2 text-xs font-semibold">👥 Sales Team</a>
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
           <div className="rounded-xl border p-4"><p className="text-xs text-slate-500">Active leads</p><b className="text-xl">{stats.active}</b></div>
