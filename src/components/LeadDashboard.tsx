@@ -108,7 +108,7 @@ export default function LeadDashboard() {
       const response = await fetch('/api/lead-meta', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
-        body: JSON.stringify({ leadId: id, meta: nextMeta }),
+        body: JSON.stringify({ leadId: id, meta: patch }),
         cache: 'no-store'
       });
       if (!response.ok) {
