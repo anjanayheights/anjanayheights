@@ -23,9 +23,11 @@ function phoneForWhatsApp(phone: string) {
   return digits.length === 10 ? `91${digits}` : digits;
 }
 
+const CRM_SESSION_KEY = 'anjanay-heights-crm-password';
+
 export default function LeadPriorityCenter() {
-  const [password, setPassword] = useState('');
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [password, setPassword] = useState(() => sessionStorage.getItem(CRM_SESSION_KEY) || '');
+  const [loggedIn, setLoggedIn] = useState(() => Boolean(sessionStorage.getItem(CRM_SESSION_KEY)));
   const [leads, setLeads] = useState<Lead[]>([]);
   const [meta, setMeta] = useState<Record<string, Meta>>({});
   const [loading, setLoading] = useState(false);
@@ -45,10 +47,14 @@ export default function LeadPriorityCenter() {
       const ld = await lr.json();
       if (!lr.ok) throw new Error(ld.error || 'Unable to load leads');
       const md = mr.ok ? await mr.json() : { meta: {} };
-      setLeads(ld.leads || []); setMeta(md.meta || {}); setLoggedIn(true);
+      setLeads(ld.leads || []); setMeta(md.meta || {}); setLoggedIn(true); sessionStorage.setItem(CRM_SESSION_KEY, password);
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load leads'); }
     finally { setLoading(false); }
   }
+
+  useEffect(() => {
+    if (loggedIn && password) void load();
+  }, []);
 
   const today = todayIST();
   const due = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && m.followUp === today; }).sort((a,b) => (meta[b.id]?.priority === 'Hot' ? 1 : 0) - (meta[a.id]?.priority === 'Hot' ? 1 : 0)), [leads, meta, today]);
@@ -77,7 +83,7 @@ export default function LeadPriorityCenter() {
     return <div key={`${kind}-${lead.id}`} className="border rounded-xl p-3 bg-white">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <button onClick={() => setSelected(lead)} className="text-left flex-1"><div className="font-bold text-[#1A365D]">{lead.name || 'Unnamed lead'} <span className="text-xs font-semibold text-gray-500">• {m.priority || 'Warm'}</span></div><div className="text-sm text-gray-600">{lead.phone}{lead.location || m.location ? ` • ${m.location || lead.location}` : ''}</div><div className="text-xs text-gray-500 mt-1">{kind === 'Priority' ? (m.followUp ? `Follow-up: ${dateLabel(m.followUp)}` : 'No follow-up set') : `${kind}: ${dateLabel(m.followUp || '')}`} • {m.status || 'New'} • {m.nextAction || 'Call'}</div><div className="text-xs text-gray-400 mt-1">{history.length ? `Last: ${history[history.length - 1].action}` : 'No activity yet'}</div></button>
-        <div className="flex gap-2"><a href={`tel:${lead.phone}`} onClick={() => {}} className="rounded-lg bg-[#1A365D] text-white px-3 py-2 text-sm font-semibold">📞 Call</a><button onClick={() => openWhatsApp(lead)} className="rounded-lg border border-[#1A365D] text-[#1A365D] px-3 py-2 text-sm font-semibold">💬 WhatsApp</button></div>
+        <div className="flex gap-2"><a href={`tel:${lead.phone}`} className="rounded-lg bg-[#1A365D] text-white px-3 py-2 text-sm font-semibold">📞 Call</a><button onClick={() => openWhatsApp(lead)} className="rounded-lg border border-[#1A365D] text-[#1A365D] px-3 py-2 text-sm font-semibold">💬 WhatsApp</button></div>
       </div>
     </div>;
   };
