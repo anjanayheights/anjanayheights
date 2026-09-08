@@ -41,20 +41,48 @@ function dedupeRecentHistory(items: HistoryItem[]) {
   }
   return result.slice(-50);
 }
+function isNotFound(error: unknown) {
+  const value = error as any;
+  const status = Number(value?.status ?? value?.statusCode ?? value?.response?.status);
+  const name = String(value?.name ?? value?.constructor?.name ?? '');
+  const message = String(value?.message ?? '');
+  return status === 404 || /BlobNotFound|NotFound/i.test(name) || /blob.*not.*exist|requested blob.*does not exist|not found/i.test(message);
+}
 async function readMeta(): Promise<{ data: Record<string, LeadMeta>; etag?: string }> {
+  let info: any;
   try {
-    const info = await head(META_PATH, blobAuth);
-    const result = await get(info.url, { access: 'private', useCache: false, ...blobAuth });
-    if (!result || result.statusCode !== 200) return { data: {}, etag: info.etag };
-    const data = result.stream ? await new Response(result.stream).json() : null;
-    if (!data || typeof data !== 'object') return { data: {}, etag: info.etag };
-    const normalized = data as Record<string, LeadMeta>;
-    for (const leadId of Object.keys(normalized)) {
-      const history = Array.isArray(normalized[leadId]?.history) ? normalized[leadId].history : [];
-      normalized[leadId] = { ...normalized[leadId], history: dedupeRecentHistory(history) };
-    }
-    return { data: normalized, etag: info.etag };
-  } catch { return { data: {}, etag: undefined }; }
+    info = await head(META_PATH, blobAuth);
+  } catch (error) {
+    if (isNotFound(error)) return { data: {}, etag: undefined };
+    throw error;
+  }
+  if (!info?.url) throw new Error('CRM metadata blob URL unavailable');
+  let result: any;
+  try {
+    result = await get(info.url, { access: 'private', useCache: false, ...blobAuth });
+  } catch (error) {
+    if (isNotFound(error)) return { data: {}, etag: undefined };
+    throw error;
+  }
+  if (!result || result.statusCode !== 200) {
+    const error = new Error(`CRM metadata read failed with status ${result?.statusCode ?? 'unknown'}`);
+    if (result?.statusCode === 404) return { data: {}, etag: undefined };
+    throw error;
+  }
+  if (!result.stream) throw new Error('CRM metadata response has no body');
+  let data: unknown;
+  try {
+    data = await new Response(result.stream).json();
+  } catch (error) {
+    throw new Error(`CRM metadata JSON is invalid: ${String((error as any)?.message || error)}`);
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('CRM metadata has invalid root shape');
+  const normalized = data as Record<string, LeadMeta>;
+  for (const leadId of Object.keys(normalized)) {
+    const history = Array.isArray(normalized[leadId]?.history) ? normalized[leadId].history : [];
+    normalized[leadId] = { ...normalized[leadId], history: dedupeRecentHistory(history) };
+  }
+  return { data: normalized, etag: info.etag };
 }
 async function writeMeta(data: Record<string, LeadMeta>, etag?: string) {
   await put(META_PATH, JSON.stringify(data), {
