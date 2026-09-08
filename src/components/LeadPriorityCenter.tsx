@@ -57,9 +57,18 @@ export default function LeadPriorityCenter() {
   }, []);
 
   const today = todayIST();
-  const due = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && m.followUp === today; }).sort((a,b) => (meta[b.id]?.priority === 'Hot' ? 1 : 0) - (meta[a.id]?.priority === 'Hot' ? 1 : 0)), [leads, meta, today]);
-  const overdue = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && !!m.followUp && m.followUp < today; }).sort((a,b) => (meta[b.id]?.priority === 'Hot' ? 1 : 0) - (meta[a.id]?.priority === 'Hot' ? 1 : 0)), [leads, meta, today]);
-  const priority = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && ['Hot','Very Hot'].includes(m.priority || ''); }).sort((a,b) => (meta[b.id]?.followUp ? 1 : 0) - (meta[a.id]?.followUp ? 1 : 0)), [leads, meta]);
+  const priorityRank = (value?: string) => value === 'Very Hot' ? 3 : value === 'Hot' ? 2 : value === 'Warm' ? 1 : 0;
+  const followUpRank = (value?: string) => value ? (value < today ? 2 : value === today ? 1 : 0) : 0;
+  const salesPrioritySort = (a: Lead, b: Lead) => {
+    const am = meta[a.id] || {}; const bm = meta[b.id] || {};
+    return priorityRank(bm.priority) - priorityRank(am.priority)
+      || followUpRank(bm.followUp) - followUpRank(am.followUp)
+      || (am.followUp ? 0 : 1) - (bm.followUp ? 0 : 1)
+      || new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  };
+  const due = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && m.followUp === today; }).sort(salesPrioritySort), [leads, meta, today]);
+  const overdue = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && !!m.followUp && m.followUp < today; }).sort(salesPrioritySort), [leads, meta, today]);
+  const priority = useMemo(() => leads.filter(l => { const m = meta[l.id] || {}; return !['Closed','Lost'].includes(m.status || '') && ['Hot','Very Hot'].includes(m.priority || ''); }).sort(salesPrioritySort), [leads, meta, today]);
 
   function openWhatsApp(lead: Lead) {
     const m = meta[lead.id] || {};
