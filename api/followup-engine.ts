@@ -60,9 +60,9 @@ function recommendation(lead: Lead, meta: Meta) {
   } else if (status === 'Contacted') {
     action = 'Follow-up'; days = priority === 'Hot' ? 1 : 3; reason = 'Lead contacted — schedule the next follow-up.';
   } else if (status === 'Interested') {
-    action = 'Site Visit'; days = 2; reason = 'Interested lead — move toward a site visit.';
+    action = 'Confirm Site Visit'; days = 2; reason = 'Interested lead — confirm and move toward a site visit.';
   } else if (status === 'Site Visit') {
-    action = 'Negotiation'; days = 1; reason = 'Site visit stage — follow up for feedback and negotiation.';
+    action = 'Follow-up'; days = 1; reason = 'Site visit stage — capture feedback and move toward negotiation.';
   } else if (status === 'Negotiation') {
     action = 'Follow-up'; days = 1; reason = 'Negotiation stage — closing follow-up is the priority.';
   }
