@@ -20,6 +20,7 @@ const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other'
 const META_PATH = 'crm/lead-meta.json';
 const DUPLICATE_WINDOW_MS = 60000;
 const MAX_WRITE_RETRIES = 3;
+const DEAL_FIELDS = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo'];
 const blobAuth = { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
 function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
 function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
@@ -76,6 +77,7 @@ export default async function handler(request: any, response: any) {
       const leadId = String(body.leadId || body.id || '').trim();
       if (!leadId) return send(response, 400, { error: 'leadId is required' });
       const incoming = body.meta && typeof body.meta === 'object' ? body.meta : {};
+      const hasDealPayload = DEAL_FIELDS.some(field => incoming[field] !== undefined);
       for (let attempt = 0; attempt < MAX_WRITE_RETRIES; attempt += 1) {
         const snapshot = await readMeta();
         const all = snapshot.data;
@@ -83,26 +85,43 @@ export default async function handler(request: any, response: any) {
         const status = String(incoming.status ?? current.status);
         const priority = String(incoming.priority ?? current.priority);
         const nextAction = String(incoming.nextAction ?? current.nextAction);
-        const rawHistory = Array.isArray(incoming.callHistory) ? incoming.callHistory : (current.callHistory || []);
-        const incomingCalls = rawHistory.slice(-30).map((entry: any) => ({ id:String(entry?.id||makeId('call')), at:String(entry?.at||''), outcome:String(entry?.outcome||'').slice(0,50), note:String(entry?.note||'').slice(0,1000) })).filter((entry:CallLog)=>entry.id && entry.at && entry.outcome);
+        const rawHistory = hasDealPayload ? (current.history || []) : (Array.isArray(incoming.history) ? incoming.history : (current.history || []));
+        const rawCalls = Array.isArray(incoming.callHistory) ? incoming.callHistory : (current.callHistory || []);
+        const incomingCalls = rawCalls.slice(-30).map((entry: any) => ({ id:String(entry?.id||makeId('call')), at:String(entry?.at||''), outcome:String(entry?.outcome||'').slice(0,50), note:String(entry?.note||'').slice(0,1000) })).filter((entry:CallLog)=>entry.id && entry.at && entry.outcome);
         const callHistory = mergeById(current.callHistory || [], incomingCalls, 30);
-        const rawActivity = Array.isArray(incoming.history) ? incoming.history : (current.history || []);
-        const incomingHistory = rawActivity.slice(-50).map((entry: any) => ({ id:String(entry?.id||makeId('history')), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
+        const incomingHistory = rawHistory.slice(-50).map((entry: any) => ({ id:String(entry?.id||makeId('history')), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
         let history = dedupeRecentHistory(mergeById(current.history || [], incomingHistory, 50));
-        const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory, history };
-        if (incoming.activity) {
+        const operational = hasDealPayload ? current : null;
+        const normalized: LeadMeta = { ...current,
+          status:STATUSES.has(status)?status:'New',
+          followUp:operational ? current.followUp : String(incoming.followUp ?? current.followUp ?? '').slice(0,10),
+          note:operational ? current.note : String(incoming.note ?? current.note ?? '').slice(0,2000),
+          priority:operational ? current.priority : (PRIORITIES.has(priority)?priority:'Warm'),
+          nextAction:operational ? current.nextAction : (NEXT_ACTIONS.has(nextAction)?nextAction:'Call'),
+          propertyType:operational ? current.propertyType : String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100),
+          location:operational ? current.location : String(incoming.location ?? current.location ?? '').slice(0,150),
+          budget:operational ? current.budget : String(incoming.budget ?? current.budget ?? '').slice(0,100),
+          timeline:operational ? current.timeline : String(incoming.timeline ?? current.timeline ?? '').slice(0,100),
+          callHistory, history
+        };
+        if (!hasDealPayload && incoming.activity) {
           const activity = incoming.activity as any;
           const event: HistoryItem = { id: String(activity.id || makeId('activity')), at: String(activity.at || new Date().toISOString()), action: String(activity.action || 'CRM update').slice(0,100), note: String(activity.note || '').slice(0,1000) };
           history = dedupeRecentHistory([...history, event]);
           normalized.history = history;
         }
-        if (incoming.smartFollowupApplied === true) {
+        if (!hasDealPayload && incoming.smartFollowupApplied === true) {
           const event: HistoryItem = { id: makeId('smart'), at: new Date().toISOString(), action: `Smart Follow-up: ${normalized.nextAction}`, note: `Recommended action applied${normalized.followUp ? ` for ${normalized.followUp}` : ''}.` };
           normalized.history = dedupeRecentHistory([...(normalized.history || history), event]);
         }
+        if (hasDealPayload && current.status !== 'Closed' && normalized.status === 'Closed') {
+          const events: HistoryItem[] = [{ id: makeId('deal'), at: new Date().toISOString(), action: 'Deal Closed', note: 'Deal Desk closed the lead.' }];
+          if (incoming.propertyId) events.push({ id: makeId('property'), at: new Date().toISOString(), action: `Property selected: ${String(incoming.closedProperty || incoming.propertyId).slice(0,200)}`, note: 'Closing property linked from inventory.' });
+          if (incoming.commissionDueDate) events.push({ id: makeId('commission'), at: new Date().toISOString(), action: `Commission due set: ${String(incoming.commissionDueDate).slice(0,20)}`, note: 'Closing commission due date recorded.' });
+          normalized.history = dedupeRecentHistory([...(normalized.history || []), ...events]);
+        }
         if (normalized.status === 'Closed' && !normalized.closedDate) normalized.closedDate = new Date().toISOString().slice(0,10);
-        const optionalFields = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo'];
-        for (const field of optionalFields) if (incoming[field] !== undefined) normalized[field as keyof LeadMeta] = String(incoming[field] ?? '').slice(0,2000) as never;
+        for (const field of DEAL_FIELDS) if (incoming[field] !== undefined) normalized[field as keyof LeadMeta] = String(incoming[field] ?? '').slice(0,2000) as never;
         if (normalized.commissionStatus && !COMMISSION_STATUS.has(normalized.commissionStatus)) normalized.commissionStatus='Pending';
         if (normalized.sellerPaymentMode && !PAYMENT_MODES.has(normalized.sellerPaymentMode)) normalized.sellerPaymentMode='Other';
         if (normalized.buyerPaymentMode && !PAYMENT_MODES.has(normalized.buyerPaymentMode)) normalized.buyerPaymentMode='Other';
