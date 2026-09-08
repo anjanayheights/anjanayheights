@@ -18,18 +18,37 @@ const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send
 const COMMISSION_STATUS = new Set(['Pending', 'Partial', 'Received']);
 const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other']);
 const META_PATH = 'crm/lead-meta.json';
+const DUPLICATE_WINDOW_MS = 60000;
 const blobAuth = { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
 function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
 function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
 function send(response: any, status: number, body: unknown) { return response.status(status).setHeader('Cache-Control', 'no-store, no-cache, must-revalidate').setHeader('Pragma', 'no-cache').json(body); }
 function makeId(prefix: string) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+function dedupeRecentHistory(items: HistoryItem[]) {
+  const ordered = [...items].sort((a,b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  const result: HistoryItem[] = [];
+  for (const item of ordered) {
+    const last = result[result.length - 1];
+    const sameAction = last && last.action === item.action;
+    const closeInTime = last && Math.abs(new Date(last.at).getTime() - new Date(item.at).getTime()) <= DUPLICATE_WINDOW_MS;
+    if (sameAction && closeInTime) continue;
+    result.push(item);
+  }
+  return result.slice(-50);
+}
 async function readMeta(): Promise<Record<string, LeadMeta>> {
   try {
     const info = await head(META_PATH, blobAuth);
     const result = await get(info.url, { access: 'private', useCache: false, ...blobAuth });
     if (!result || result.statusCode !== 200) return {};
     const data = result.stream ? await new Response(result.stream).json() : null;
-    return data && typeof data === 'object' ? data : {};
+    if (!data || typeof data !== 'object') return {};
+    const normalized = data as Record<string, LeadMeta>;
+    for (const leadId of Object.keys(normalized)) {
+      const history = Array.isArray(normalized[leadId]?.history) ? normalized[leadId].history : [];
+      normalized[leadId] = { ...normalized[leadId], history: dedupeRecentHistory(history) };
+    }
+    return normalized;
   } catch { return {}; }
 }
 async function writeMeta(data: Record<string, LeadMeta>) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...blobAuth }); }
@@ -37,18 +56,6 @@ function mergeById<T extends { id: string }>(base: T[], incoming: T[], limit: nu
   const map = new Map<string, T>();
   for (const item of [...base, ...incoming]) if (item?.id) map.set(item.id, item);
   return [...map.values()].sort((a,b) => String(a.id).localeCompare(String(b.id))).slice(-limit);
-}
-function dedupeRecentHistory(items: HistoryItem[]) {
-  const ordered = [...items].sort((a,b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-  const result: HistoryItem[] = [];
-  for (const item of ordered) {
-    const last = result[result.length - 1];
-    const sameAction = last && last.action === item.action;
-    const closeInTime = last && Math.abs(new Date(last.at).getTime() - new Date(item.at).getTime()) <= 15000;
-    if (sameAction && closeInTime) continue;
-    result.push(item);
-  }
-  return result.slice(-50);
 }
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
@@ -73,7 +80,7 @@ export default async function handler(request: any, response: any) {
       const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory, history };
       if (incoming.activity) {
         const activity = incoming.activity as any;
-        const event: HistoryItem = { id: makeId('activity'), at: new Date().toISOString(), action: String(activity.action || 'CRM update').slice(0,100), note: String(activity.note || '').slice(0,1000) };
+        const event: HistoryItem = { id: String(activity.id || makeId('activity')), at: String(activity.at || new Date().toISOString()), action: String(activity.action || 'CRM update').slice(0,100), note: String(activity.note || '').slice(0,1000) };
         history = dedupeRecentHistory([...history, event]);
         normalized.history = history;
       }
