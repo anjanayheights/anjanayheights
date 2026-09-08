@@ -14,7 +14,7 @@ type LeadMeta = {
 };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
 const PRIORITIES = new Set(['Very Hot', 'Hot', 'Warm', 'Cold']);
-const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action']);
+const NEXT_ACTIONS = new Set(['Call', 'WhatsApp', 'Site Visit', 'Meeting', 'Send Property Options', 'Follow-up', 'No Action', 'Confirm Site Visit', 'Handover / Commission', 'Reactivation']);
 const COMMISSION_STATUS = new Set(['Pending', 'Partial', 'Received']);
 const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other']);
 const META_PATH = 'crm/lead-meta.json';
