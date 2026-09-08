@@ -1,4 +1,5 @@
 import { get, head, list, put } from '@vercel/blob';
+import { createHash } from 'node:crypto';
 
 const META_PATH = 'crm/lead-meta.json';
 
@@ -50,6 +51,11 @@ function normalizePhone(phone: string) {
   if (digits.length === 10) return `91${digits}`;
   if (digits.startsWith('91') && digits.length === 12) return digits;
   return digits;
+}
+
+function leadKeyForPhone(phone: string) {
+  const normalized = normalizePhone(phone);
+  return `leads/phone-${createHash('sha256').update(normalized).digest('hex')}.json`;
 }
 
 function normalizeSource(value: string) {
@@ -174,6 +180,7 @@ export default async function handler(request: any, response: any) {
       const phone = String(body.phone || '').trim();
       if (!name || !phone) return send(response, 400, { error: 'Name and phone are required.' });
 
+      const normalizedPhone = normalizePhone(phone);
       if (await phoneAlreadyExists(phone)) {
         return send(response, 200, { ok: true, duplicate: true, message: 'Your request is already with our team.' });
       }
@@ -202,13 +209,21 @@ export default async function handler(request: any, response: any) {
         message: String(body.message || '').trim(),
       };
 
-      await put(`leads/${lead.id}.json`, JSON.stringify(lead), {
-        access: 'private',
-        addRandomSuffix: false,
-        contentType: 'application/json',
-        allowOverwrite: false,
-        ...blobAuth,
-      });
+      try {
+        await put(normalizedPhone ? leadKeyForPhone(phone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
+          access: 'private',
+          addRandomSuffix: false,
+          contentType: 'application/json',
+          allowOverwrite: false,
+          ...blobAuth,
+        });
+      } catch (writeError) {
+        // The deterministic phone key makes the create operation itself the final duplicate guard.
+        if (normalizedPhone && await phoneAlreadyExists(phone)) {
+          return send(response, 200, { ok: true, duplicate: true, message: 'Your request is already with our team.' });
+        }
+        throw writeError;
+      }
 
       try {
         const allMeta = await readMeta();
