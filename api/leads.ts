@@ -1,7 +1,5 @@
-import { get, head, list, put } from '@vercel/blob';
+import { get, list, put } from '@vercel/blob';
 import { createHash } from 'node:crypto';
-
-const META_PATH = 'crm/lead-meta.json';
 
 const blobAuth = {
   oidcToken: process.env.VERCEL_OIDC_TOKEN,
@@ -114,26 +112,6 @@ async function phoneAlreadyExists(phone: string) {
   return false;
 }
 
-async function readMeta() {
-  try {
-    const info = await head(META_PATH, blobAuth);
-    const data = await readBlobJson(info.url);
-    return data && typeof data === 'object' ? data : {};
-  } catch {
-    return {};
-  }
-}
-
-async function writeMeta(data: Record<string, any>) {
-  await put(META_PATH, JSON.stringify(data), {
-    access: 'private',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: 'application/json',
-    ...blobAuth,
-  });
-}
-
 function isUrgentTimeline(timeline: string) {
   const value = String(timeline || '').toLowerCase();
   return ['immediate', 'urgent', 'today', 'asap', 'this week', 'within 7 days', 'within 1 week'].some(term => value.includes(term));
@@ -146,6 +124,30 @@ function whatsappMessage(lead: any) {
     lead.budget && `Budget: ${lead.budget}`,
   ].filter(Boolean).join('\n');
   return `Hi ${lead.name || 'there'}, thank you for your enquiry with Anjanay Heights.\n\n${details ? `${details}\n\n` : ''}I would be happy to help you with suitable property options. Please let me know a convenient time to speak.\n\nRegards,\nAnjanay Heights`;
+}
+
+async function initializeLeadMeta(request: any, lead: any) {
+  const token = process.env.DASHBOARD_PASSWORD || '';
+  const base = `https://${request.headers.host}`;
+  const today = new Date().toISOString().slice(0, 10);
+  const result = await fetch(`${base}/api/lead-meta`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      leadId: lead.id,
+      meta: {
+        status: 'New',
+        followUp: today,
+        note: 'New lead: call promptly and send suitable property options on WhatsApp.',
+        priority: isUrgentTimeline(lead.timeline) ? 'Hot' : 'Warm',
+        nextAction: 'Call',
+      },
+    }),
+  });
+  if (!result.ok) throw new Error(`lead-meta initialization failed: ${result.status}`);
 }
 
 export default async function handler(request: any, response: any) {
@@ -226,19 +228,9 @@ export default async function handler(request: any, response: any) {
       }
 
       try {
-        const allMeta = await readMeta();
-        if (!allMeta[lead.id]) {
-          const today = new Date().toISOString().slice(0, 10);
-          allMeta[lead.id] = {
-            status: 'New',
-            followUp: today,
-            note: 'New lead: call promptly and send suitable property options on WhatsApp.',
-            priority: isUrgentTimeline(lead.timeline) ? 'Hot' : 'Warm',
-            nextAction: 'Call',
-          };
-          await writeMeta(allMeta);
-        }
+        await initializeLeadMeta(request, lead);
       } catch (metaError) {
+        // The lead is already safely stored; metadata setup can be repaired without touching the lead record.
         console.error('automatic lead follow-up setup error', metaError);
       }
 
