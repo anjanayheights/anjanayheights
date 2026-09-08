@@ -44,7 +44,7 @@ function dedupeRecentHistory(items: HistoryItem[]) {
   for (const item of ordered) {
     const last = result[result.length - 1];
     const sameAction = last && last.action === item.action;
-    const closeInTime = last && Math.abs(new Date(last.at).getTime() - new Date(item.at).getTime()) <= 3000;
+    const closeInTime = last && Math.abs(new Date(last.at).getTime() - new Date(item.at).getTime()) <= 15000;
     if (sameAction && closeInTime) continue;
     result.push(item);
   }
