@@ -8,8 +8,11 @@ type LeadMeta = {
   dealValue?: string; customerOffer?: string; expectedClosingDate?: string; closingProbability?: string;
   negotiationNotes?: string; closedDate?: string; closedProperty?: string; finalRemarks?: string;
   sellerCommissionRate?: string; buyerCommissionRate?: string; commissionReceived?: string; commissionStatus?: string;
-  commissionNotes?: string; sellerPaymentDate?: string; sellerPaymentMode?: string; sellerReceiptNo?: string;
+  commissionDueDate?: string; commissionNotes?: string; sellerPaymentDate?: string; sellerPaymentMode?: string; sellerReceiptNo?: string;
   buyerPaymentDate?: string; buyerPaymentMode?: string; buyerReceiptNo?: string;
+  buyerName?: string; buyerPhone?: string; sellerName?: string; sellerPhone?: string;
+  propertyId?: string; propertyLocation?: string; propertyArea?: string; propertyBedrooms?: string;
+  paymentMode?: string; receiptNo?: string; paymentDate?: string;
   callHistory?: CallLog[]; history?: HistoryItem[];
 };
 const STATUSES = new Set(['New', 'Contacted', 'Interested', 'Site Visit', 'Negotiation', 'Closed', 'Lost']);
@@ -20,7 +23,7 @@ const PAYMENT_MODES = new Set(['Cash', 'Bank Transfer', 'UPI', 'Cheque', 'Other'
 const META_PATH = 'crm/lead-meta.json';
 const DUPLICATE_WINDOW_MS = 60000;
 const MAX_WRITE_RETRIES = 3;
-const DEAL_FIELDS = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo'];
+const DEAL_FIELDS = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionDueDate','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo','buyerName','buyerPhone','sellerName','sellerPhone','propertyId','propertyLocation','propertyArea','propertyBedrooms','paymentMode','receiptNo','paymentDate'];
 const blobAuth = { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
 function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
 function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
@@ -125,6 +128,7 @@ export default async function handler(request: any, response: any) {
         if (normalized.commissionStatus && !COMMISSION_STATUS.has(normalized.commissionStatus)) normalized.commissionStatus='Pending';
         if (normalized.sellerPaymentMode && !PAYMENT_MODES.has(normalized.sellerPaymentMode)) normalized.sellerPaymentMode='Other';
         if (normalized.buyerPaymentMode && !PAYMENT_MODES.has(normalized.buyerPaymentMode)) normalized.buyerPaymentMode='Other';
+        if (normalized.paymentMode && !PAYMENT_MODES.has(normalized.paymentMode)) normalized.paymentMode='Other';
         all[leadId]=normalized;
         try {
           await writeMeta(all, snapshot.etag);
