@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 type Lead = { id: string; name?: string; phone?: string; status?: string };
-type HistoryItem = { action: string; at: string };
+type HistoryItem = { id?: string; action: string; at: string };
 type Meta = {
   priority?: string;
   followUp?: string;
@@ -22,6 +22,7 @@ const todayIST = () =>
   }).format(new Date());
 
 const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+const activityId = (action: string) => `action-${action.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 export default function TodayActionCenter() {
   const [password, setPassword] = useState(sessionStorage.getItem('anjanay-heights-crm-password') || '');
@@ -35,8 +36,8 @@ export default function TodayActionCenter() {
     try {
       const headers = { Authorization: `Bearer ${password}` };
       const [leadRes, metaRes] = await Promise.all([
-        fetch('/api/leads', { headers }),
-        fetch('/api/lead-meta', { headers }),
+        fetch('/api/leads', { headers, cache: 'no-store' }),
+        fetch('/api/lead-meta', { headers, cache: 'no-store' }),
       ]);
       const leadJson = await leadRes.json();
       const metaJson = await metaRes.json();
@@ -48,7 +49,7 @@ export default function TodayActionCenter() {
     }
   };
 
-  useEffect(() => { if (password) load(); }, []);
+  useEffect(() => { if (password) void load(); }, []);
 
   const today = todayIST();
 
@@ -58,7 +59,10 @@ export default function TodayActionCenter() {
       lead.status !== 'Closed' && lead.status !== 'Lost' &&
       ((m.followUp && m.followUp <= today) || m.priority === 'Hot' || m.priority === 'Very Hot' || m.nextAction === 'Follow-up')
     )
-    .sort((a, b) => (a.meta.followUp || '9999').localeCompare(b.meta.followUp || '9999')),
+    .sort((a, b) => {
+      const priorityRank = (value?: string) => value === 'Very Hot' ? 0 : value === 'Hot' ? 1 : 2;
+      return priorityRank(a.meta.priority) - priorityRank(b.meta.priority) || (a.meta.followUp || '9999').localeCompare(b.meta.followUp || '9999');
+    }),
   [leads, meta, today]);
 
   const commissions = useMemo(() => leads
@@ -80,24 +84,33 @@ export default function TodayActionCenter() {
   const save = async (id: string, patch: Partial<Meta>) => {
     const next = { ...(meta[id] || {}), ...patch };
     setMeta((current) => ({ ...current, [id]: next }));
-    await fetch('/api/lead-meta', {
+    const response = await fetch('/api/lead-meta', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
       body: JSON.stringify({ id, meta: next }),
     });
+    if (!response.ok) {
+      setMeta((current) => ({ ...current, [id]: meta[id] || {} }));
+      throw new Error('Unable to save CRM action');
+    }
   };
 
   const pipelineAction = async (lead: Lead, action: string, status: string, nextAction = action) => {
-    const history = [...(meta[lead.id]?.history || []), { action, at: new Date().toISOString() }];
-    await save(lead.id, { history, nextAction, followUp: action === 'Follow-up' ? today : meta[lead.id]?.followUp });
-    await save(lead.id, { status } as Partial<Meta>);
+    const current = meta[lead.id] || {};
+    const history = [...(current.history || []), { id: activityId(action), action, at: new Date().toISOString() }];
+    await save(lead.id, {
+      status,
+      nextAction,
+      followUp: action === 'Follow-up' ? today : current.followUp,
+      history,
+    });
   };
 
   const call = (lead: Lead, m: Meta) => {
     if (lead.phone) window.open(`tel:${lead.phone}`);
-    save(lead.id, {
+    void save(lead.id, {
       nextAction: 'Call',
-      history: [...(m.history || []), { action: 'Call', at: new Date().toISOString() }],
+      history: [...(m.history || []), { id: activityId('Call'), action: 'Call', at: new Date().toISOString() }],
     });
   };
 
@@ -113,7 +126,7 @@ export default function TodayActionCenter() {
           <h2 className="text-xl font-bold text-[#1A365D]">🎯 Today’s Action Center</h2>
           <p className="text-sm text-slate-500 mt-1">Daily sales + commission actions in one place.</p>
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="CRM password" className="mt-4 w-full max-w-sm border rounded-lg px-3 py-2" />
-          <button onClick={load} className="mt-2 rounded-lg bg-[#1A365D] px-4 py-2 text-white font-semibold">Open Action Center</button>
+          <button onClick={() => void load()} className="mt-2 rounded-lg bg-[#1A365D] px-4 py-2 text-white font-semibold">Open Action Center</button>
         </div>
       </section>
     );
@@ -127,7 +140,7 @@ export default function TodayActionCenter() {
             <h2 className="text-xl font-bold text-[#1A365D]">🎯 Today’s Action Center</h2>
             <p className="text-sm text-slate-500 mt-1">One-click sales follow-up and commission collection workflow.</p>
           </div>
-          <button onClick={load} className="rounded-lg border px-3 py-2 text-sm font-semibold">{loading ? 'Loading…' : '↻ Refresh'}</button>
+          <button onClick={() => void load()} className="rounded-lg border px-3 py-2 text-sm font-semibold">{loading ? 'Loading…' : '↻ Refresh'}</button>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-slate-50">
@@ -154,11 +167,11 @@ export default function TodayActionCenter() {
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => call(lead, m)} className="rounded-lg bg-[#1A365D] px-3 py-2 text-xs text-white">📞 Call</button>
                     <button onClick={() => whatsapp(lead, `Hello ${lead.name || ''}, following up regarding your property requirement. Please let me know a convenient time to connect.`)} className="rounded-lg border px-3 py-2 text-xs">💬 WhatsApp</button>
-                    <button onClick={() => pipelineAction(lead, 'Contacted', 'Contacted', 'Follow-up')} className="rounded-lg border px-3 py-2 text-xs">✅ Contacted</button>
-                    <button onClick={() => pipelineAction(lead, 'Interested', 'Interested', 'Follow-up')} className="rounded-lg border px-3 py-2 text-xs">👍 Interested</button>
-                    <button onClick={() => pipelineAction(lead, 'Site Visit', 'Site Visit', 'Site Visit')} className="rounded-lg border px-3 py-2 text-xs">📅 Site Visit</button>
-                    <button onClick={() => pipelineAction(lead, 'Negotiation', 'Negotiation', 'Negotiation')} className="rounded-lg border px-3 py-2 text-xs">🤝 Negotiation</button>
-                    <button onClick={() => save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">🔄 Follow-up Today</button>
+                    <button onClick={() => void pipelineAction(lead, 'Contacted', 'Contacted', 'Follow-up')} className="rounded-lg border px-3 py-2 text-xs">✅ Contacted</button>
+                    <button onClick={() => void pipelineAction(lead, 'Interested', 'Interested', 'Follow-up')} className="rounded-lg border px-3 py-2 text-xs">👍 Interested</button>
+                    <button onClick={() => void pipelineAction(lead, 'Site Visit', 'Site Visit', 'Site Visit')} className="rounded-lg border px-3 py-2 text-xs">📅 Site Visit</button>
+                    <button onClick={() => void pipelineAction(lead, 'Negotiation', 'Negotiation', 'Negotiation')} className="rounded-lg border px-3 py-2 text-xs">🤝 Negotiation</button>
+                    <button onClick={() => void save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">🔄 Follow-up Today</button>
                   </div>
                 </div>
               ))}
@@ -176,8 +189,8 @@ export default function TodayActionCenter() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => whatsapp(lead, `Hello ${lead.name || ''}, this is a follow-up regarding the pending commission/payment of ${money(pendingAmount(m))}. Please let me know the expected payment date.`)} className="rounded-lg bg-[#1A365D] px-3 py-2 text-xs text-white">💬 Collection Follow-up</button>
-                    <button onClick={() => save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">📅 Add to Today</button>
-                    <button onClick={() => save(lead.id, { commissionReceived: Number(m.dealValue || 0) * (Number(m.sellerCommissionRate ?? 1) + Number(m.buyerCommissionRate ?? 0)) / 100, commissionStatus: 'Received' })} className="rounded-lg border px-3 py-2 text-xs">✅ Mark Received</button>
+                    <button onClick={() => void save(lead.id, { followUp: today, nextAction: 'Follow-up' })} className="rounded-lg border px-3 py-2 text-xs">📅 Add to Today</button>
+                    <button onClick={() => void save(lead.id, { commissionReceived: Number(m.dealValue || 0) * (Number(m.sellerCommissionRate ?? 1) + Number(m.buyerCommissionRate ?? 0)) / 100, commissionStatus: 'Received' })} className="rounded-lg border px-3 py-2 text-xs">✅ Mark Received</button>
                   </div>
                 </div>
               ))}
