@@ -33,6 +33,11 @@ async function readMeta(): Promise<Record<string, LeadMeta>> {
   } catch { return {}; }
 }
 async function writeMeta(data: Record<string, LeadMeta>) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...blobAuth }); }
+function mergeById<T extends { id: string }>(base: T[], incoming: T[], limit: number) {
+  const map = new Map<string, T>();
+  for (const item of [...base, ...incoming]) if (item?.id) map.set(item.id, item);
+  return [...map.values()].sort((a,b) => String(a.id).localeCompare(String(b.id))).slice(-limit);
+}
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
@@ -48,14 +53,17 @@ export default async function handler(request: any, response: any) {
       const priority = String(incoming.priority ?? current.priority);
       const nextAction = String(incoming.nextAction ?? current.nextAction);
       const rawHistory = Array.isArray(incoming.callHistory) ? incoming.callHistory : (current.callHistory || []);
-      const callHistory = rawHistory.slice(-30).map((entry: any) => ({ id:String(entry?.id||makeId('call')), at:String(entry?.at||''), outcome:String(entry?.outcome||'').slice(0,50), note:String(entry?.note||'').slice(0,1000) })).filter((entry:CallLog)=>entry.id && entry.at && entry.outcome);
+      const incomingCalls = rawHistory.slice(-30).map((entry: any) => ({ id:String(entry?.id||makeId('call')), at:String(entry?.at||''), outcome:String(entry?.outcome||'').slice(0,50), note:String(entry?.note||'').slice(0,1000) })).filter((entry:CallLog)=>entry.id && entry.at && entry.outcome);
+      const callHistory = mergeById(current.callHistory || [], incomingCalls, 30);
       const rawActivity = Array.isArray(incoming.history) ? incoming.history : (current.history || []);
-      const history = rawActivity.slice(-50).map((entry: any) => ({ id:String(entry?.id||makeId('history')), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
+      const incomingHistory = rawActivity.slice(-50).map((entry: any) => ({ id:String(entry?.id||makeId('history')), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
+      let history = mergeById(current.history || [], incomingHistory, 50);
       const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory, history };
       if (incoming.activity) {
         const activity = incoming.activity as any;
         const event: HistoryItem = { id: makeId('activity'), at: new Date().toISOString(), action: String(activity.action || 'CRM update').slice(0,100), note: String(activity.note || '').slice(0,1000) };
-        normalized.history = [...history, event].slice(-50);
+        history = [...history, event].slice(-50);
+        normalized.history = history;
       }
       if (incoming.smartFollowupApplied === true) {
         const event: HistoryItem = { id: makeId('smart'), at: new Date().toISOString(), action: `Smart Follow-up: ${normalized.nextAction}`, note: `Recommended action applied${normalized.followUp ? ` for ${normalized.followUp}` : ''}.` };
