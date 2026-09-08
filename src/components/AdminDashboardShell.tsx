@@ -117,6 +117,7 @@ export default function AdminDashboardShell() {
               <button onClick={() => { window.location.href = '/admin/daily-followups'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">📅 Daily Follow-ups</button>
               <button onClick={() => { window.location.href = '/admin/followup-automation'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">⚙️ Follow-up Automation</button>
               <button onClick={() => { window.location.href = '/admin/lead-360'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">👤 Lead 360</button>
+              <button onClick={() => { window.location.href = '/admin/source-funnel'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">📈 Source Funnel</button>
               <button onClick={() => { window.location.href = '/admin/ai'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🤖 AI Lead Assistant</button>
               <button onClick={() => { window.location.href = '/admin/pipeline'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">📈 Sales Pipeline</button>
               <button onClick={() => { window.location.href = '/admin/matches'; }} className="rounded-lg bg-[#1A365D] px-3 py-2 text-sm font-semibold text-white">🎯 Matched Properties</button>
@@ -141,7 +142,7 @@ export default function AdminDashboardShell() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-white/98 backdrop-blur shadow-[0_-4px_16px_rgba(0,0,0,0.08)] px-2 py-2">
         <div className="grid grid-cols-4 gap-1 max-w-lg mx-auto">
           <button onClick={() => { window.location.href = '/admin/workspace'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🎯<span className="block mt-0.5">Control</span></button>
-          <button onClick={() => { window.location.href = '/admin/lead-quality'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">🔥<span className="block mt-0.5">Quality</span></button>
+          <button onClick={() => { window.location.href = '/admin/source-funnel'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">📈<span className="block mt-0.5">Sources</span></button>
           <button onClick={() => { window.location.href = '/admin/followup-automation'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">⚙️<span className="block mt-0.5">Automation</span></button>
           <button onClick={() => { window.location.href = '/admin/lead-360'; }} className="rounded-xl py-2 text-[11px] font-semibold text-[#1A365D] active:bg-slate-100">👤<span className="block mt-0.5">Lead 360</span></button>
         </div>
