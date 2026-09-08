@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 type Lead={id:string;name:string;phone:string;location?:string;budget?:string;timeline?:string;requirement?:string;message?:string;created_at:string};
-type HistoryItem={action:string;at:string};
+type HistoryItem={id?:string;action:string;at:string};
 type Meta={status?:string;priority?:string;nextAction?:string;followUp?:string;location?:string;budget?:string;timeline?:string;history?:HistoryItem[];dealValue?:string;sellerCommissionRate?:string;buyerCommissionRate?:string;commissionReceived?:string;commissionStatus?:string;commissionDueDate?:string};
 const CRM_SESSION_KEY='anjanay-heights-crm-password';
 const STAGES=['New','Contacted','Interested','Site Visit','Negotiation','Closed','Lost'] as const;
@@ -9,6 +9,7 @@ type Stage=typeof STAGES[number];
 const TODAY=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const wa=(p:string)=>{const d=p.replace(/\D/g,'');return d.length===10?`91${d}`:d};
 const stamp=()=>new Date().toISOString();
+const activityId=()=>`activity-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
 const nextActionFor=(stage:Stage)=>({New:'Call',Contacted:'Follow-up',Interested:'Send Property Options','Site Visit':'Confirm Site Visit',Negotiation:'Follow-up',Closed:'Handover / Commission',Lost:'Reactivation'}[stage]);
 
 export default function Lead360View(){
@@ -16,8 +17,8 @@ export default function Lead360View(){
  useEffect(()=>{const stored=sessionStorage.getItem(CRM_SESSION_KEY)||'';if(!stored)return;let cancelled=false;fetch('/api/leads?_session=1',{headers:{Authorization:`Bearer ${stored}`,'Cache-Control':'no-cache'},cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('Session expired');if(!cancelled){setPassword(stored);setLoggedIn(true);void loadWithPassword(stored)}}).catch(()=>sessionStorage.removeItem(CRM_SESSION_KEY));return()=>{cancelled=true}},[]);
  async function loadWithPassword(token:string){setLoading(true);setError('');try{const h={Authorization:`Bearer ${token}`,'Cache-Control':'no-cache'};const t=`${Date.now()}-${Math.random().toString(36).slice(2)}`;const[lr,mr]=await Promise.all([fetch(`/api/leads?_refresh=${t}`,{headers:h,cache:'no-store'}),fetch(`/api/lead-meta?_refresh=${t}`,{headers:h,cache:'no-store'})]);const ld=await lr.json();const md=mr.ok?await mr.json():{meta:{}};if(!lr.ok)throw new Error(ld.error||'Unable to load leads');setLeads(ld.leads||[]);setMeta(md.meta||{});setLoggedIn(true);sessionStorage.setItem(CRM_SESSION_KEY,token);setSelected(s=>s||(ld.leads?.[0]?.id||''))}catch(e){setError(e instanceof Error?e.message:'Unable to load leads')}finally{setLoading(false)}}
  async function load(){const token=password.trim();if(!token){setError('Enter CRM password.');return}await loadWithPassword(token)}
- async function patch(id:string,patch:Meta){const next={...(meta[id]||{}),...patch};setMeta(x=>({...x,[id]:next}));setSaving(id);setError('');try{const r=await fetch('/api/lead-meta',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${password}`},body:JSON.stringify({leadId:id,meta:next})});if(!r.ok)throw new Error('Could not save update')}catch(e){setError(e instanceof Error?e.message:'Could not save update')}finally{setSaving('')}}
- function action(id:string,label:string,status?:Stage,nextAction?:string){const old=meta[id]?.history||[];const same=old.length&&old[old.length-1]?.action===label;const history=same?old:[...old,{action:label,at:stamp()}].slice(-50);void patch(id,{...(status?{status}:{}),...(nextAction?{nextAction}:{}),followUp:TODAY(),history})}
+ async function patch(id:string,patch:Meta,activity?:HistoryItem){const next={...(meta[id]||{}),...patch};setMeta(x=>({...x,[id]:next}));setSaving(id);setError('');try{const payload:{leadId:string;meta:Meta;activity?:HistoryItem}={leadId:id,meta:next};if(activity)payload.activity=activity;const r=await fetch('/api/lead-meta',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${password}`},body:JSON.stringify(payload)});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.error||'Could not save update')}}catch(e){setError(e instanceof Error?e.message:'Could not save update')}finally{setSaving('')}}
+ function action(id:string,label:string,status?:Stage,nextAction?:string){const at=stamp();const history=meta[id]?.history||[];const same=history.length&&history[history.length-1]?.action===label;if(same)return;void patch(id,{...(status?{status}:{}),...(nextAction?{nextAction}:{}),followUp:TODAY()},{id:activityId(),action:label,at})}
  function moveStage(stage:Stage){if(!lead||saving===lead.id)return;action(lead.id,`Stage: ${m.status||'New'} → ${stage}`,stage,nextActionFor(stage));}
  const filtered=useMemo(()=>leads.filter(l=>`${l.name} ${l.phone} ${l.location||''} ${l.budget||''}`.toLowerCase().includes(search.toLowerCase())),[leads,search]);
  const lead=leads.find(l=>l.id===selected);const m=lead?meta[lead.id]||{}:{};const currentStage=(STAGES.includes((m.status||'New') as Stage)?(m.status||'New'):'New') as Stage;const stageIndex=STAGES.indexOf(currentStage);
