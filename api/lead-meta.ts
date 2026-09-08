@@ -1,4 +1,4 @@
-import { head, put } from '@vercel/blob';
+import { get, head, put } from '@vercel/blob';
 
 type CallLog = { id: string; at: string; outcome: string; note: string };
 type HistoryItem = { id: string; at: string; action: string; note: string };
@@ -25,10 +25,9 @@ function send(response: any, status: number, body: unknown) { return response.st
 async function readMeta(): Promise<Record<string, LeadMeta>> {
   try {
     const info = await head(META_PATH, blobAuth);
-    const separator = info.url.includes('?') ? '&' : '?';
-    const result = await fetch(`${info.url}${separator}crm_refresh=${Date.now()}-${Math.random()}`, { headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN || ''}`, 'Cache-Control': 'no-cache' }, cache: 'no-store' });
-    if (!result.ok) return {};
-    const data = await result.json();
+    const result = await get(info.url, { access: 'private', ...blobAuth });
+    if (!result || result.statusCode !== 200) return {};
+    const data = result.stream ? await new Response(result.stream).json() : null;
     return data && typeof data === 'object' ? data : {};
   } catch { return {}; }
 }
