@@ -38,6 +38,18 @@ function mergeById<T extends { id: string }>(base: T[], incoming: T[], limit: nu
   for (const item of [...base, ...incoming]) if (item?.id) map.set(item.id, item);
   return [...map.values()].sort((a,b) => String(a.id).localeCompare(String(b.id))).slice(-limit);
 }
+function dedupeRecentHistory(items: HistoryItem[]) {
+  const ordered = [...items].sort((a,b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  const result: HistoryItem[] = [];
+  for (const item of ordered) {
+    const last = result[result.length - 1];
+    const sameAction = last && last.action === item.action;
+    const closeInTime = last && Math.abs(new Date(last.at).getTime() - new Date(item.at).getTime()) <= 3000;
+    if (sameAction && closeInTime) continue;
+    result.push(item);
+  }
+  return result.slice(-50);
+}
 export default async function handler(request: any, response: any) {
   if (!authorized(request)) return send(response, 401, { error: 'Unauthorized' });
   try {
@@ -57,17 +69,17 @@ export default async function handler(request: any, response: any) {
       const callHistory = mergeById(current.callHistory || [], incomingCalls, 30);
       const rawActivity = Array.isArray(incoming.history) ? incoming.history : (current.history || []);
       const incomingHistory = rawActivity.slice(-50).map((entry: any) => ({ id:String(entry?.id||makeId('history')), at:String(entry?.at||''), action:String(entry?.action||'').slice(0,100), note:String(entry?.note||'').slice(0,1000) })).filter((entry:HistoryItem)=>entry.id && entry.at && entry.action);
-      let history = mergeById(current.history || [], incomingHistory, 50);
+      let history = dedupeRecentHistory(mergeById(current.history || [], incomingHistory, 50));
       const normalized: LeadMeta = { ...current, status:STATUSES.has(status)?status:'New', followUp:String(incoming.followUp ?? current.followUp ?? '').slice(0,10), note:String(incoming.note ?? current.note ?? '').slice(0,2000), priority:PRIORITIES.has(priority)?priority:'Warm', nextAction:NEXT_ACTIONS.has(nextAction)?nextAction:'Call', propertyType:String(incoming.propertyType ?? current.propertyType ?? '').slice(0,100), location:String(incoming.location ?? current.location ?? '').slice(0,150), budget:String(incoming.budget ?? current.budget ?? '').slice(0,100), timeline:String(incoming.timeline ?? current.timeline ?? '').slice(0,100), callHistory, history };
       if (incoming.activity) {
         const activity = incoming.activity as any;
         const event: HistoryItem = { id: makeId('activity'), at: new Date().toISOString(), action: String(activity.action || 'CRM update').slice(0,100), note: String(activity.note || '').slice(0,1000) };
-        history = [...history, event].slice(-50);
+        history = dedupeRecentHistory([...history, event]);
         normalized.history = history;
       }
       if (incoming.smartFollowupApplied === true) {
         const event: HistoryItem = { id: makeId('smart'), at: new Date().toISOString(), action: `Smart Follow-up: ${normalized.nextAction}`, note: `Recommended action applied${normalized.followUp ? ` for ${normalized.followUp}` : ''}.` };
-        normalized.history = [...(normalized.history || history), event].slice(-50);
+        normalized.history = dedupeRecentHistory([...(normalized.history || history), event]);
       }
       if (normalized.status === 'Closed' && !normalized.closedDate) normalized.closedDate = new Date().toISOString().slice(0,10);
       const optionalFields = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo'];
