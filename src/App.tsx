@@ -18,6 +18,7 @@ import SourceConversionFunnel from './components/SourceConversionFunnel';
 import TelecallingCRM from './components/TelecallingCRM';
 import LeadQualityCenter from './components/LeadQualityCenter';
 import DailyFollowupQueue from './components/DailyFollowupQueue';
+import Lead360View from './components/Lead360View';
 import SalesTeamPerformance from './components/SalesTeamPerformance';
 import CRMWorkspace from './components/CRMWorkspaceLive';
 import VisitorTracker from './components/VisitorTracker';
@@ -49,6 +50,7 @@ export default function App() {
   if (window.location.pathname === '/admin/tools') return <AdminTools />;
   if (window.location.pathname === '/admin/followups') return <FollowupCenter />;
   if (window.location.pathname === '/admin/daily-followups') return <DailyFollowupQueue />;
+  if (window.location.pathname === '/admin/lead-360') return <Lead360View />;
   if (window.location.pathname === '/admin/pipeline') return <SalesPipeline />;
   if (window.location.pathname === '/admin/deals') return <DealDesk />;
   if (window.location.pathname === '/admin/revenue') return <RevenueDashboard />;
