@@ -87,7 +87,7 @@ export default function TodayActionCenter() {
     const response = await fetch('/api/lead-meta', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${password}` },
-      body: JSON.stringify({ id, meta: next }),
+      body: JSON.stringify({ id, meta: patch }),
     });
     if (!response.ok) {
       setMeta((current) => ({ ...current, [id]: meta[id] || {} }));
