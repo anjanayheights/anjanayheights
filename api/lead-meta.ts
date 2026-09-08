@@ -25,7 +25,7 @@ function send(response: any, status: number, body: unknown) { return response.st
 async function readMeta(): Promise<Record<string, LeadMeta>> {
   try {
     const info = await head(META_PATH, blobAuth);
-    const result = await get(info.url, { access: 'private', ...blobAuth });
+    const result = await get(info.url, { access: 'private', useCache: false, ...blobAuth });
     if (!result || result.statusCode !== 200) return {};
     const data = result.stream ? await new Response(result.stream).json() : null;
     return data && typeof data === 'object' ? data : {};
