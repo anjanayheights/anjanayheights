@@ -37,7 +37,7 @@ export default function FollowupAutomation(){
   const current=meta[id]||{};const next=addDays(days);const event={id:`followup-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,action:`Follow-up completed · next follow-up ${next}`,at:stamp(),note:`Follow-up completed; next follow-up scheduled for ${next}.`};
   const history=[...(current.history||[]),event].slice(-30);const updated={...current,priority:current.priority||'Hot',nextAction:'Follow-up',followUp:next,history};const previous=meta[id];
   setSaving(id);setError('');setMeta(x=>({...x,[id]:updated}));
-  try{const r=await fetch('/api/lead-meta',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${password}`},body:JSON.stringify({leadId:id,meta:updated})});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.error||'Could not save follow-up automation');}}
+  try{const r=await fetch('/api/lead-meta',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${password}`},body:JSON.stringify({leadId:id,meta:{priority:current.priority||'Hot',nextAction:'Follow-up',followUp:next},activity:event})});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.error||'Could not save follow-up automation');}}
   catch(e){setMeta(x=>({...x,[id]:previous||{}}));setError(e instanceof Error?e.message:'Could not save follow-up automation');}
   finally{setSaving('');}
  }
