@@ -1,5 +1,5 @@
 import { get, list, put } from '@vercel/blob';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 const blobAuthCandidates = [
   ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
@@ -16,9 +16,26 @@ function header(req: any, name: string) {
   if (h && typeof h.get === 'function') return h.get(name) || '';
   return h?.[name.toLowerCase()] || h?.[name] || '';
 }
+function sessionToken() {
+  const password = process.env.DASHBOARD_PASSWORD || '';
+  return password ? createHmac('sha256', password).update('anjanay-heights-crm-session').digest('hex') : '';
+}
+function cookie(req: any, name: string) {
+  const raw = String(header(req, 'cookie') || '');
+  const match = raw.split(';').map((v: string) => v.trim()).find((v: string) => v.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
+}
+function setSessionCookie(res: any) {
+  const token = sessionToken();
+  if (!token) return;
+  res.setHeader('Set-Cookie', `ah_crm_session=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=28800`);
+}
 function authorized(req: any) {
   const password = process.env.DASHBOARD_PASSWORD || '';
-  return Boolean(password && header(req, 'authorization') === `Bearer ${password}`);
+  const authorization = header(req, 'authorization');
+  const bearerOk = Boolean(password && authorization === `Bearer ${password}`);
+  const cookieOk = Boolean(sessionToken() && cookie(req, 'ah_crm_session') === sessionToken());
+  return bearerOk || cookieOk;
 }
 function body(req: any) {
   if (req?.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
@@ -66,7 +83,10 @@ export default async function handler(req: any, res: any) {
     if (!authorized(req)) return send(res, 401, { error: 'Unauthorized' });
 
     // Login/session validation must not depend on Blob availability.
+    // A short-lived HttpOnly session cookie also lets child CRM modules reuse
+    // the single login without maintaining their own password state.
     if (req?.query?._login === '1' || req?.query?._session === '1') {
+      setSessionCookie(res);
       return send(res, 200, { ok: true });
     }
 
