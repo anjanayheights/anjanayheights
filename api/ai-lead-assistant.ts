@@ -17,8 +17,11 @@ export default async function handler(req: any, res: any) {
     const instructions = question.trim() ? `Answer the user's CRM/sales question directly. You are the sales manager for Anjanay Heights. Use only the supplied CRM and property facts. If data is missing, say so instead of inventing it. User question: ${question.trim()}` : mode === 'campaign' ? 'Create a practical 7-day lead-generation plan for Anjanay Heights using these existing leads and properties. Prioritize high-value real-estate leads, WhatsApp, Instagram/Facebook, Google Search, direct seller outreach, and referral activity. Give daily actions, sample ad/message angles, and KPIs. Do not invent property facts.' : mode === 'followup' ? 'Create ready-to-send WhatsApp follow-up messages for the most actionable leads. Group them into Hot, Warm, and New. Keep messages short, professional, natural Indian business English/Hinglish, and based only on the supplied facts. Also recommend the next action and timing.' : 'Act as the sales manager for Anjanay Heights. Analyze the leads, identify the top 10 opportunities, explain why each is important, suggest the next action, and identify missing information that should be collected. Then give a short daily priority list. Do not invent facts.';
     const prompt = `${instructions}\n\nLEADS:\n${JSON.stringify(safeLeads)}\n\nAVAILABLE PROPERTIES:\n${JSON.stringify(safeProperties)}\n\nReturn a concise, actionable answer with headings and bullet points. The user is a real-estate broker and wants more qualified leads and faster conversions.`;
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const response = await ai.models.generateContent({ model: 'gemini-3.6-flash', contents: prompt, config: { maxOutputTokens: 1800 } });
-    return res.status(200).json({ text: response.text || 'No AI response generated.' });
+    const model = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+    const response = await ai.models.generateContent({ model, contents: prompt, config: { maxOutputTokens: 1800 } });
+    const text = response.text?.trim();
+    if (!text) return res.status(502).json({ error: 'AI returned an empty response. Please try again.' });
+    return res.status(200).json({ text, model });
   } catch (error) {
     console.error('AI lead assistant error', error);
     return res.status(500).json({ error: error instanceof Error ? error.message : 'AI request failed' });
