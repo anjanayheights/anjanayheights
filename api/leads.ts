@@ -1,10 +1,9 @@
 import { get, list, put } from '@vercel/blob';
 import { createHash } from 'node:crypto';
 
-const blobAuth = {
-  oidcToken: process.env.VERCEL_OIDC_TOKEN,
-  storeId: process.env.BLOB_STORE_ID,
-};
+const blobAuth = process.env.BLOB_READ_WRITE_TOKEN
+  ? { token: process.env.BLOB_READ_WRITE_TOKEN }
+  : { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
 
 function getHeader(request: any, name: string) {
   const headers = request?.headers;
