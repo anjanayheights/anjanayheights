@@ -2,10 +2,9 @@ import { get, list, put } from '@vercel/blob';
 import { createHash, createHmac } from 'node:crypto';
 
 const blobAuthCandidates = [
-  ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
   ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
-    ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }]
-    : []),
+    ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }] : []),
+  ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
 ];
 
 function send(res: any, status: number, body: unknown) {
@@ -64,7 +63,8 @@ function isBlobAuthError(error: unknown) {
 }
 async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) {
   let lastError: unknown = new Error('No Vercel Blob credentials configured.');
-  for (const auth of blobAuthCandidates) {
+  const attempts = [{}, ...blobAuthCandidates] as Record<string, string>[];
+  for (const auth of attempts) {
     try { return await operation(auth); }
     catch (error) {
       lastError = error;
@@ -82,9 +82,6 @@ export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     if (!authorized(req)) return send(res, 401, { error: 'Unauthorized' });
 
-    // Login/session validation must not depend on Blob availability.
-    // A short-lived HttpOnly session cookie also lets child CRM modules reuse
-    // the single login without maintaining their own password state.
     if (req?.query?._login === '1' || req?.query?._session === '1') {
       setSessionCookie(res);
       return send(res, 200, { ok: true });
@@ -110,23 +107,13 @@ export default async function handler(req: any, res: any) {
       const p = phone(rawPhone);
       const q = req?.query || {};
       const lead = {
-        id: crypto.randomUUID(),
-        created_at: new Date().toISOString(),
-        name,
-        phone: rawPhone,
-        email: String(b.email || '').trim(),
-        form_name: String(b['form-name'] || 'property-lead'),
-        lead_type: String(b.lead_type || ''),
-        source: String(b.source || b.lead_source || 'Website'),
-        utm_source: String(b.utm_source || q.utm_source || '').trim(),
-        utm_medium: String(b.utm_medium || q.utm_medium || '').trim(),
-        utm_campaign: String(b.utm_campaign || q.utm_campaign || '').trim(),
-        property_type: String(b.property_type || '').trim(),
-        location: String(b.location || '').trim(),
-        budget: String(b.budget || '').trim(),
-        timeline: String(b.timeline || '').trim(),
-        requirement: String(b.requirement || '').trim(),
-        message: String(b.message || '').trim(),
+        id: crypto.randomUUID(), created_at: new Date().toISOString(), name, phone: rawPhone,
+        email: String(b.email || '').trim(), form_name: String(b['form-name'] || 'property-lead'),
+        lead_type: String(b.lead_type || ''), source: String(b.source || b.lead_source || 'Website'),
+        utm_source: String(b.utm_source || q.utm_source || '').trim(), utm_medium: String(b.utm_medium || q.utm_medium || '').trim(),
+        utm_campaign: String(b.utm_campaign || q.utm_campaign || '').trim(), property_type: String(b.property_type || '').trim(),
+        location: String(b.location || '').trim(), budget: String(b.budget || '').trim(), timeline: String(b.timeline || '').trim(),
+        requirement: String(b.requirement || '').trim(), message: String(b.message || '').trim(),
       };
       await withBlobAuth((auth) => put(p ? key(rawPhone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
         access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...auth,
