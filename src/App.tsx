@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import LeadDashboard from './components/LeadDashboard';
 import AdminDashboardShell from './components/AdminDashboardShell';
 import PropertyInventory from './components/PropertyInventory';
@@ -41,31 +42,88 @@ import Contact from './components/Contact';
 import Footer from './components/Footer';
 import WhatsAppButton from './components/WhatsAppButton';
 
+const CRM_SESSION_KEY = 'anjanay-heights-crm-password';
+
+function setControlledInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function unlockDashboardPasswordGate(password: string) {
+  const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]'));
+  inputs.forEach((input) => {
+    if (!input.value) setControlledInputValue(input, password);
+    const form = input.closest('form');
+    const scope = form || input.parentElement?.parentElement || input.parentElement;
+    const button = scope?.querySelector<HTMLButtonElement>('button');
+    if (button && !button.disabled) button.click();
+  });
+}
+
+function AdminSessionBridge({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const stored = sessionStorage.getItem(CRM_SESSION_KEY) || '';
+    if (!stored) return;
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const unlock = () => {
+      if (cancelled) return;
+      unlockDashboardPasswordGate(stored);
+      attempts += 1;
+      if (attempts >= 20 || document.querySelectorAll('input[type="password"]').length === 0) {
+        window.clearInterval(timer);
+      }
+    };
+
+    const timer = window.setInterval(unlock, 200);
+    unlock();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return <>{children}</>;
+}
+
 export default function App() {
-  if (window.location.pathname === '/admin') return <AdminDashboardShell />;
-  if (window.location.pathname === '/admin/management') return <ManagementDashboard />;
-  if (window.location.pathname === '/admin/workspace') return <CRMWorkspace />;
-  if (window.location.pathname === '/admin/team-performance') return <SalesTeamPerformance />;
-  if (window.location.pathname === '/admin/telecalling') return <TelecallingCRM />;
-  if (window.location.pathname === '/admin/properties') return <PropertyInventory />;
-  if (window.location.pathname === '/admin/recovery') return <PropertyRecovery />;
-  if (window.location.pathname === '/admin/matches') return <LeadMatches />;
-  if (window.location.pathname === '/admin/tools') return <AdminTools />;
-  if (window.location.pathname === '/admin/followups') return <FollowupCenter />;
-  if (window.location.pathname === '/admin/daily-followups') return <DailyFollowupQueue />;
-  if (window.location.pathname === '/admin/followup-automation') return <FollowupAutomation />;
-  if (window.location.pathname === '/admin/lead-360') return <Lead360View />;
-  if (window.location.pathname === '/admin/pipeline') return <SalesPipeline />;
-  if (window.location.pathname === '/admin/deals') return <DealDesk />;
-  if (window.location.pathname === '/admin/revenue') return <RevenueDashboard />;
-  if (window.location.pathname === '/admin/commission') return <CommissionDashboard />;
-  if (window.location.pathname === '/admin/requirements') return <BuyerRequirements />;
-  if (window.location.pathname === '/admin/ai') return <AiLeadAssistant />;
-  if (window.location.pathname === '/admin/leads-growth') return <LeadGenerationCenter />;
-  if (window.location.pathname === '/admin/lead-quality') return <LeadQualityCenter />;
-  if (window.location.pathname === '/admin/source-analytics') return <LeadSourceAnalytics />;
-  if (window.location.pathname === '/admin/campaign-performance') return <CampaignPerformance />;
-  if (window.location.pathname === '/admin/source-funnel') return <SourceConversionFunnel />;
+  const path = window.location.pathname;
+
+  if (path === '/admin') return <AdminDashboardShell />;
+
+  if (path.startsWith('/admin/')) {
+    let content: React.ReactNode = null;
+    if (path === '/admin/management') content = <ManagementDashboard />;
+    else if (path === '/admin/workspace') content = <CRMWorkspace />;
+    else if (path === '/admin/team-performance') content = <SalesTeamPerformance />;
+    else if (path === '/admin/telecalling') content = <TelecallingCRM />;
+    else if (path === '/admin/properties') content = <PropertyInventory />;
+    else if (path === '/admin/recovery') content = <PropertyRecovery />;
+    else if (path === '/admin/matches') content = <LeadMatches />;
+    else if (path === '/admin/tools') content = <AdminTools />;
+    else if (path === '/admin/followups') content = <FollowupCenter />;
+    else if (path === '/admin/daily-followups') content = <DailyFollowupQueue />;
+    else if (path === '/admin/followup-automation') content = <FollowupAutomation />;
+    else if (path === '/admin/lead-360') content = <Lead360View />;
+    else if (path === '/admin/pipeline') content = <SalesPipeline />;
+    else if (path === '/admin/deals') content = <DealDesk />;
+    else if (path === '/admin/revenue') content = <RevenueDashboard />;
+    else if (path === '/admin/commission') content = <CommissionDashboard />;
+    else if (path === '/admin/requirements') content = <BuyerRequirements />;
+    else if (path === '/admin/ai') content = <AiLeadAssistant />;
+    else if (path === '/admin/leads-growth') content = <LeadGenerationCenter />;
+    else if (path === '/admin/lead-quality') content = <LeadQualityCenter />;
+    else if (path === '/admin/source-analytics') content = <LeadSourceAnalytics />;
+    else if (path === '/admin/campaign-performance') content = <CampaignPerformance />;
+    else if (path === '/admin/source-funnel') content = <SourceConversionFunnel />;
+
+    if (content) return <AdminSessionBridge>{content}</AdminSessionBridge>;
+  }
 
   return (
     <div className="min-h-screen bg-[#F9F9F7] font-sans text-[#1A1A1A] selection:bg-[#F1EDE4] selection:text-[#1A365D]">
