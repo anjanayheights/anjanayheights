@@ -1,4 +1,5 @@
 import { get, head, put } from '@vercel/blob';
+import { createHmac } from 'node:crypto';
 
 type CallLog = { id: string; at: string; outcome: string; note: string };
 type HistoryItem = { id: string; at: string; action: string; note: string };
@@ -36,11 +37,7 @@ function getHeader(request: any, name: string) {
 }
 function sessionToken() {
   const password = process.env.DASHBOARD_PASSWORD || '';
-  return password ? requireSessionHmac(password) : '';
-}
-function requireSessionHmac(password: string) {
-  const crypto = require('node:crypto') as typeof import('node:crypto');
-  return crypto.createHmac('sha256', password).update('anjanay-heights-crm-session').digest('hex');
+  return password ? createHmac('sha256', password).update('anjanay-heights-crm-session').digest('hex') : '';
 }
 function getCookie(request: any, name: string) {
   const raw = String(getHeader(request, 'cookie') || '');
