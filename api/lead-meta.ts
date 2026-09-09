@@ -24,13 +24,18 @@ const META_PATH = 'crm/lead-meta.json';
 const DUPLICATE_WINDOW_MS = 60000;
 const MAX_WRITE_RETRIES = 3;
 const DEAL_FIELDS = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionDueDate','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo','buyerName','buyerPhone','sellerName','sellerPhone','propertyId','propertyLocation','propertyArea','propertyBedrooms','paymentMode','receiptNo','paymentDate'];
-const blobAuth = process.env.BLOB_READ_WRITE_TOKEN
-  ? { token: process.env.BLOB_READ_WRITE_TOKEN }
-  : { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
+const blobAuthCandidates = [
+  ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
+  ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
+    ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }]
+    : []),
+];
 function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
 function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
 function send(response: any, status: number, body: unknown) { return response.status(status).setHeader('Cache-Control', 'no-store, no-cache, must-revalidate').setHeader('Pragma', 'no-cache').json(body); }
 function makeId(prefix: string) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+function isBlobAuthError(error: unknown) { const value = error as any; const name = String(value?.name ?? value?.constructor?.name ?? ''); const message = String(value?.message ?? ''); return /BlobAccessError|access denied|valid token|credentials|unauthorized|forbidden/i.test(`${name} ${message}`); }
+async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) { let lastError: unknown = new Error('No Vercel Blob credentials configured.'); for (const auth of blobAuthCandidates) { try { return await operation(auth); } catch (error) { lastError = error; if (!isBlobAuthError(error)) throw error; } } throw lastError; }
 function dedupeRecentHistory(items: HistoryItem[]) {
   const ordered = [...items].sort((a,b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   const result: HistoryItem[] = [];
@@ -52,10 +57,10 @@ function isNotFound(error: unknown) {
 }
 async function readMeta(): Promise<{ data: Record<string, LeadMeta>; etag?: string }> {
   let info: any;
-  try { info = await head(META_PATH, blobAuth); } catch (error) { if (isNotFound(error)) return { data: {}, etag: undefined }; throw error; }
+  try { info = await withBlobAuth((auth) => head(META_PATH, auth)); } catch (error) { if (isNotFound(error)) return { data: {}, etag: undefined }; throw error; }
   if (!info?.url) throw new Error('CRM metadata blob URL unavailable');
   let result: any;
-  try { result = await get(info.url, { access: 'private', useCache: false, ...blobAuth }); } catch (error) { if (isNotFound(error)) return { data: {}, etag: undefined }; throw error; }
+  try { result = await withBlobAuth((auth) => get(info.url, { access: 'private', useCache: false, ...auth })); } catch (error) { if (isNotFound(error)) return { data: {}, etag: undefined }; throw error; }
   if (!result || result.statusCode !== 200) { const error = new Error(`CRM metadata read failed with status ${result?.statusCode ?? 'unknown'}`); if (result?.statusCode === 404) return { data: {}, etag: undefined }; throw error; }
   if (!result.stream) throw new Error('CRM metadata response has no body');
   let data: unknown;
@@ -65,7 +70,7 @@ async function readMeta(): Promise<{ data: Record<string, LeadMeta>; etag?: stri
   for (const leadId of Object.keys(normalized)) { const history = Array.isArray(normalized[leadId]?.history) ? normalized[leadId].history : []; normalized[leadId] = { ...normalized[leadId], history: dedupeRecentHistory(history) }; }
   return { data: normalized, etag: info.etag };
 }
-async function writeMeta(data: Record<string, LeadMeta>, etag?: string) { await put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...(etag ? { ifMatch: etag } : {}), ...blobAuth }); }
+async function writeMeta(data: Record<string, LeadMeta>, etag?: string) { await withBlobAuth((auth) => put(META_PATH, JSON.stringify(data), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...(etag ? { ifMatch: etag } : {}), ...auth })); }
 function mergeById<T extends { id: string }>(base: T[], incoming: T[], limit: number) { const map = new Map<string, T>(); for (const item of [...base, ...incoming]) if (item?.id) map.set(item.id, item); return [...map.values()].sort((a,b) => String(a.id).localeCompare(String(b.id))).slice(-limit); }
 function isWriteConflict(error: unknown) { const value = error as any; return value?.name === 'BlobPreconditionFailedError' || value?.constructor?.name === 'BlobPreconditionFailedError' || /precondition|etag/i.test(String(value?.message || '')); }
 export default async function handler(request: any, response: any) {
