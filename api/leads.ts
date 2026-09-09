@@ -1,7 +1,7 @@
 import { get, list, put } from '@vercel/blob';
 import { createHash } from 'node:crypto';
 
-// Production Blob token is currently being rejected. Prefer Vercel deployment OIDC.
+// Prefer Vercel deployment OIDC for private Blob access; fall back to the configured Blob token.
 const blobAuth = process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
   ? { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }
   : { token: process.env.BLOB_READ_WRITE_TOKEN };
@@ -45,6 +45,14 @@ async function read(url: string) {
 export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     if (!authorized(req)) return send(res, 401, { error: 'Unauthorized' });
+
+    // Login/session validation must not depend on Blob availability.
+    // This prevents a storage outage from blocking the entire CRM login screen.
+    const q = req?.query || {};
+    if (q._login === '1' || q._session === '1') {
+      return send(res, 200, { ok: true });
+    }
+
     try {
       const r = await list({ prefix: 'leads/', ...blobAuth });
       const leads = (await Promise.all(r.blobs.map(async b => { try { return await read(b.url); } catch { return null; } }))).filter(Boolean);
