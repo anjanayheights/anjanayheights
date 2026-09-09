@@ -25,17 +25,46 @@ const DUPLICATE_WINDOW_MS = 60000;
 const MAX_WRITE_RETRIES = 3;
 const DEAL_FIELDS = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionDueDate','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo','buyerName','buyerPhone','sellerName','sellerPhone','propertyId','propertyLocation','propertyArea','propertyBedrooms','paymentMode','receiptNo','paymentDate'];
 const blobAuthCandidates = [
+  ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }] : []),
   ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
-  ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
-    ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }]
-    : []),
 ];
-function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
-function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
+function getHeader(request: any, name: string) {
+  const headers = request?.headers;
+  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
+  const value = headers?.[name.toLowerCase()] ?? headers?.[name];
+  return Array.isArray(value) ? value[0] || '' : value || '';
+}
+function sessionToken() {
+  const password = process.env.DASHBOARD_PASSWORD || '';
+  return password ? requireSessionHmac(password) : '';
+}
+function requireSessionHmac(password: string) {
+  const crypto = require('node:crypto') as typeof import('node:crypto');
+  return crypto.createHmac('sha256', password).update('anjanay-heights-crm-session').digest('hex');
+}
+function getCookie(request: any, name: string) {
+  const raw = String(getHeader(request, 'cookie') || '');
+  const match = raw.split(';').map((v: string) => v.trim()).find((v: string) => v.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
+}
+function authorized(request: any) {
+  const expected = process.env.DASHBOARD_PASSWORD || '';
+  const bearer = getHeader(request, 'authorization');
+  const bearerOk = Boolean(expected && bearer === `Bearer ${expected}`);
+  const cookieOk = Boolean(sessionToken() && getCookie(request, 'ah_crm_session') === sessionToken());
+  return bearerOk || cookieOk;
+}
 function send(response: any, status: number, body: unknown) { return response.status(status).setHeader('Cache-Control', 'no-store, no-cache, must-revalidate').setHeader('Pragma', 'no-cache').json(body); }
 function makeId(prefix: string) { return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
 function isBlobAuthError(error: unknown) { const value = error as any; const name = String(value?.name ?? value?.constructor?.name ?? ''); const message = String(value?.message ?? ''); return /BlobAccessError|access denied|valid token|credentials|unauthorized|forbidden/i.test(`${name} ${message}`); }
-async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) { let lastError: unknown = new Error('No Vercel Blob credentials configured.'); for (const auth of blobAuthCandidates) { try { return await operation(auth); } catch (error) { lastError = error; if (!isBlobAuthError(error)) throw error; } } throw lastError; }
+async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) {
+  let lastError: unknown = new Error('No Vercel Blob credentials configured.');
+  const attempts = [{}, ...blobAuthCandidates] as Record<string, string>[];
+  for (const auth of attempts) {
+    try { return await operation(auth); } catch (error) { lastError = error; if (!isBlobAuthError(error)) throw error; }
+  }
+  throw lastError;
+}
 function dedupeRecentHistory(items: HistoryItem[]) {
   const ordered = [...items].sort((a,b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   const result: HistoryItem[] = [];
