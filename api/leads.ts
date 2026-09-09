@@ -1,251 +1,96 @@
 import { get, list, put } from '@vercel/blob';
 import { createHash } from 'node:crypto';
 
-const blobAuth = process.env.BLOB_READ_WRITE_TOKEN
-  ? { token: process.env.BLOB_READ_WRITE_TOKEN }
-  : { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
+// Production Blob token is currently being rejected. Prefer Vercel deployment OIDC.
+const blobAuth = process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
+  ? { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }
+  : { token: process.env.BLOB_READ_WRITE_TOKEN };
 
-function getHeader(request: any, name: string) {
-  const headers = request?.headers;
-  if (headers && typeof headers.get === 'function') return headers.get(name) || '';
-  const value = headers?.[name.toLowerCase()] ?? headers?.[name];
-  return Array.isArray(value) ? value[0] || '' : value || '';
+function send(res: any, status: number, body: unknown) {
+  return res.status(status).setHeader('Cache-Control', 'no-store').json(body);
 }
-
-function dashboardAuthorized(request: any) {
-  const expected = process.env.DASHBOARD_PASSWORD || '';
-  const authorization = getHeader(request, 'authorization');
-  return Boolean(expected && authorization === `Bearer ${expected}`);
+function header(req: any, name: string) {
+  const h = req?.headers;
+  if (h && typeof h.get === 'function') return h.get(name) || '';
+  return h?.[name.toLowerCase()] || h?.[name] || '';
 }
-
-function send(response: any, status: number, body: unknown) {
-  return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
+function authorized(req: any) {
+  const password = process.env.DASHBOARD_PASSWORD || '';
+  return Boolean(password && header(req, 'authorization') === `Bearer ${password}`);
 }
-
-function parseBody(request: any) {
-  const body = request?.body;
-  if (body && typeof body === 'object' && !Buffer.isBuffer(body)) return body;
-  if (Buffer.isBuffer(body)) return parseEncodedBody(body.toString('utf8'), getHeader(request, 'content-type'));
-  if (typeof body === 'string') return parseEncodedBody(body, getHeader(request, 'content-type'));
-  return {};
-}
-
-function parseEncodedBody(raw: string, contentType: string) {
+function body(req: any) {
+  if (req?.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
+  const raw = Buffer.isBuffer(req?.body) ? req.body.toString() : String(req?.body || '');
   if (!raw) return {};
-  if (contentType.includes('application/json')) {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
+  if (String(header(req, 'content-type')).includes('application/json')) {
+    try { return JSON.parse(raw) || {}; } catch { return {}; }
   }
   return Object.fromEntries(new URLSearchParams(raw).entries());
 }
-
-function normalizePhone(phone: string) {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length === 10) return `91${digits}`;
-  if (digits.startsWith('91') && digits.length === 12) return digits;
-  return digits;
+function phone(v: string) {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length === 10 ? `91${d}` : d;
+}
+function key(v: string) {
+  return `leads/phone-${createHash('sha256').update(phone(v)).digest('hex')}.json`;
+}
+function priority(t: string) {
+  return /immediate|urgent|today|asap|this week|within 7 days|within 1 week/i.test(String(t || '')) ? 'Hot' : 'Warm';
+}
+async function read(url: string) {
+  const r = await get(url, { access: 'private', ...blobAuth });
+  return r?.statusCode === 200 && r.stream ? await new Response(r.stream).json() : null;
 }
 
-function leadKeyForPhone(phone: string) {
-  const normalized = normalizePhone(phone);
-  return `leads/phone-${createHash('sha256').update(normalized).digest('hex')}.json`;
-}
-
-function normalizeSource(value: string) {
-  const raw = String(value || '').trim().toLowerCase();
-  if (!raw) return '';
-  if (raw.includes('whatsapp') || raw === 'wa') return 'WhatsApp';
-  if (raw.includes('facebook') || raw.includes('instagram') || raw.includes('meta')) return 'Meta';
-  if (raw.includes('google')) return 'Google';
-  if (raw.includes('referral') || raw.includes('refer')) return 'Referral';
-  if (raw.includes('99acres')) return '99acres';
-  if (raw.includes('magicbricks')) return 'MagicBricks';
-  if (raw.includes('website') || raw.includes('direct')) return 'Website';
-  return '';
-}
-
-function sourceFromRequest(request: any, body: any, formName: string) {
-  const explicit = normalizeSource(body.source || body.lead_source || body.utm_source || body.utm_medium);
-  if (explicit) return explicit;
-
-  const referer = getHeader(request, 'referer') || getHeader(request, 'referrer');
-  const fromReferer = normalizeSource(referer);
-  if (fromReferer) return fromReferer;
-
-  const query = request?.query || {};
-  const fromQuery = normalizeSource(query.source || query.lead_source || query.utm_source || query.utm_medium);
-  if (fromQuery) return fromQuery;
-
-  const rawForm = String(formName || '').toLowerCase();
-  if (rawForm.includes('whatsapp')) return 'WhatsApp';
-  if (rawForm.includes('99acres')) return '99acres';
-  if (rawForm.includes('magicbricks')) return 'MagicBricks';
-  if (rawForm.includes('referral')) return 'Referral';
-  if (rawForm.includes('meta') || rawForm.includes('facebook') || rawForm.includes('instagram')) return 'Meta';
-  if (rawForm.includes('google')) return 'Google';
-  return 'Website';
-}
-
-async function readBlobJson(url: string) {
-  const result = await get(url, { access: 'private', ...blobAuth });
-  if (!result || result.statusCode !== 200) return null;
-  return result.stream ? await new Response(result.stream).json() : null;
-}
-
-async function phoneAlreadyExists(phone: string) {
-  const normalized = normalizePhone(phone);
-  if (!normalized) return false;
-  const result = await list({ prefix: 'leads/', ...blobAuth });
-  for (const blob of result.blobs) {
+export default async function handler(req: any, res: any) {
+  if (req.method === 'GET') {
+    if (!authorized(req)) return send(res, 401, { error: 'Unauthorized' });
     try {
-      const existing = await readBlobJson(blob.url);
-      if (normalizePhone(existing?.phone || '') === normalized) return true;
-    } catch {
-      // Ignore an unreadable old lead and continue checking the remaining records.
-    }
-  }
-  return false;
-}
-
-function isUrgentTimeline(timeline: string) {
-  const value = String(timeline || '').toLowerCase();
-  return ['immediate', 'urgent', 'today', 'asap', 'this week', 'within 7 days', 'within 1 week'].some(term => value.includes(term));
-}
-
-function whatsappMessage(lead: any) {
-  const details = [
-    lead.property_type && `Property: ${lead.property_type}`,
-    lead.location && `Location: ${lead.location}`,
-    lead.budget && `Budget: ${lead.budget}`,
-  ].filter(Boolean).join('\n');
-  return `Hi ${lead.name || 'there'}, thank you for your enquiry with Anjanay Heights.\n\n${details ? `${details}\n\n` : ''}I would be happy to help you with suitable property options. Please let me know a convenient time to speak.\n\nRegards,\nAnjanay Heights`;
-}
-
-async function initializeLeadMeta(request: any, lead: any) {
-  const token = process.env.DASHBOARD_PASSWORD || '';
-  const base = `https://${request.headers.host}`;
-  const today = new Date().toISOString().slice(0, 10);
-  const result = await fetch(`${base}/api/lead-meta`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      leadId: lead.id,
-      meta: {
-        status: 'New',
-        followUp: today,
-        note: 'New lead: call promptly and send suitable property options on WhatsApp.',
-        priority: isUrgentTimeline(lead.timeline) ? 'Hot' : 'Warm',
-        nextAction: 'Call',
-      },
-    }),
-  });
-  if (!result.ok) throw new Error(`lead-meta initialization failed: ${result.status}`);
-}
-
-export default async function handler(request: any, response: any) {
-  if (request.method === 'GET') {
-    if (!dashboardAuthorized(request)) return send(response, 401, { error: 'Unauthorized' });
-
-    try {
-      const result = await list({ prefix: 'leads/', ...blobAuth });
-      const leads = await Promise.all(
-        result.blobs.map(async (blob) => {
-          try {
-            return await readBlobJson(blob.url);
-          } catch {
-            return null;
-          }
-        })
-      );
-      return send(response, 200, { leads: leads.filter(Boolean) });
-    } catch (error) {
-      console.error('leads GET error', error);
-      return send(response, 500, { error: 'Unable to load leads.' });
+      const r = await list({ prefix: 'leads/', ...blobAuth });
+      const leads = (await Promise.all(r.blobs.map(async b => { try { return await read(b.url); } catch { return null; } }))).filter(Boolean);
+      return send(res, 200, { leads });
+    } catch (e) {
+      console.error('leads GET error', e);
+      return send(res, 500, { error: 'Unable to load leads.' });
     }
   }
 
-  if (request.method === 'POST') {
+  if (req.method === 'POST') {
     try {
-      const body = parseBody(request);
-
-      if (String(body['bot-field'] || '').trim()) return send(response, 200, { ok: true });
-
-      const name = String(body.name || '').trim();
-      const phone = String(body.phone || '').trim();
-      if (!name || !phone) return send(response, 400, { error: 'Name and phone are required.' });
-
-      const normalizedPhone = normalizePhone(phone);
-      if (await phoneAlreadyExists(phone)) {
-        return send(response, 200, { ok: true, duplicate: true, message: 'Your request is already with our team.' });
-      }
-
-      const formName = String(body['form-name'] || 'property-lead');
-      const source = sourceFromRequest(request, body, formName);
-      const query = request?.query || {};
-
+      const b = body(req);
+      if (String(b['bot-field'] || '').trim()) return send(res, 200, { ok: true });
+      const name = String(b.name || '').trim();
+      const rawPhone = String(b.phone || '').trim();
+      if (!name || !rawPhone) return send(res, 400, { error: 'Name and phone are required.' });
+      const p = phone(rawPhone);
+      const q = req?.query || {};
       const lead = {
         id: crypto.randomUUID(),
         created_at: new Date().toISOString(),
         name,
-        phone,
-        email: String(body.email || '').trim(),
-        form_name: formName,
-        lead_type: String(body.lead_type || ''),
-        source,
-        utm_source: String(body.utm_source || query.utm_source || '').trim(),
-        utm_medium: String(body.utm_medium || query.utm_medium || '').trim(),
-        utm_campaign: String(body.utm_campaign || query.utm_campaign || '').trim(),
-        property_type: String(body.property_type || '').trim(),
-        location: String(body.location || '').trim(),
-        budget: String(body.budget || '').trim(),
-        timeline: String(body.timeline || '').trim(),
-        requirement: String(body.requirement || '').trim(),
-        message: String(body.message || '').trim(),
+        phone: rawPhone,
+        email: String(b.email || '').trim(),
+        form_name: String(b['form-name'] || 'property-lead'),
+        lead_type: String(b.lead_type || ''),
+        source: String(b.source || b.lead_source || 'Website'),
+        utm_source: String(b.utm_source || q.utm_source || '').trim(),
+        utm_medium: String(b.utm_medium || q.utm_medium || '').trim(),
+        utm_campaign: String(b.utm_campaign || q.utm_campaign || '').trim(),
+        property_type: String(b.property_type || '').trim(),
+        location: String(b.location || '').trim(),
+        budget: String(b.budget || '').trim(),
+        timeline: String(b.timeline || '').trim(),
+        requirement: String(b.requirement || '').trim(),
+        message: String(b.message || '').trim(),
       };
-
-      try {
-        await put(normalizedPhone ? leadKeyForPhone(phone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
-          access: 'private',
-          addRandomSuffix: false,
-          contentType: 'application/json',
-          allowOverwrite: false,
-          ...blobAuth,
-        });
-      } catch (writeError) {
-        // The deterministic phone key makes the create operation itself the final duplicate guard.
-        if (normalizedPhone && await phoneAlreadyExists(phone)) {
-          return send(response, 200, { ok: true, duplicate: true, message: 'Your request is already with our team.' });
-        }
-        throw writeError;
-      }
-
-      try {
-        await initializeLeadMeta(request, lead);
-      } catch (metaError) {
-        // The lead is already safely stored; metadata setup can be repaired without touching the lead record.
-        console.error('automatic lead follow-up setup error', metaError);
-      }
-
-      return send(response, 200, {
-        ok: true,
-        lead,
-        followUp: 'today',
-        priority: isUrgentTimeline(lead.timeline) ? 'Hot' : 'Warm',
-        nextAction: 'Call',
-        whatsappMessage: whatsappMessage(lead),
+      await put(p ? key(rawPhone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
+        access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...blobAuth,
       });
-    } catch (error) {
-      console.error('leads POST error', error);
-      return send(response, 500, { error: 'Unable to save your request.' });
+      return send(res, 200, { ok: true, lead, followUp: 'today', priority: priority(lead.timeline), nextAction: 'Call' });
+    } catch (e) {
+      console.error('leads POST error', e);
+      return send(res, 500, { error: 'Unable to save your request.' });
     }
   }
-
-  return send(response, 405, { error: 'Method not allowed' });
+  return send(res, 405, { error: 'Method not allowed' });
 }
