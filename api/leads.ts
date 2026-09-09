@@ -1,13 +1,12 @@
 import { get, list, put } from '@vercel/blob';
 import { createHash } from 'node:crypto';
 
-// Prefer the store's explicit read/write token. Deployment OIDC is only a fallback.
-// This avoids an invalid/stale deployment OIDC token masking a valid Blob token.
-const blobAuth = process.env.BLOB_READ_WRITE_TOKEN
-  ? { token: process.env.BLOB_READ_WRITE_TOKEN }
-  : process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
-    ? { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }
-    : { token: undefined };
+const blobAuthCandidates = [
+  ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
+  ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
+    ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }]
+    : []),
+];
 
 function send(res: any, status: number, body: unknown) {
   return res.status(status).setHeader('Cache-Control', 'no-store').json(body);
@@ -40,8 +39,25 @@ function key(v: string) {
 function priority(t: string) {
   return /immediate|urgent|today|asap|this week|within 7 days|within 1 week/i.test(String(t || '')) ? 'Hot' : 'Warm';
 }
+function isBlobAuthError(error: unknown) {
+  const value = error as any;
+  const name = String(value?.name ?? value?.constructor?.name ?? '');
+  const message = String(value?.message ?? '');
+  return /BlobAccessError|access denied|valid token|credentials|unauthorized|forbidden/i.test(`${name} ${message}`);
+}
+async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) {
+  let lastError: unknown = new Error('No Vercel Blob credentials configured.');
+  for (const auth of blobAuthCandidates) {
+    try { return await operation(auth); }
+    catch (error) {
+      lastError = error;
+      if (!isBlobAuthError(error)) throw error;
+    }
+  }
+  throw lastError;
+}
 async function read(url: string) {
-  const r = await get(url, { access: 'private', ...blobAuth });
+  const r = await withBlobAuth((auth) => get(url, { access: 'private', ...auth }));
   return r?.statusCode === 200 && r.stream ? await new Response(r.stream).json() : null;
 }
 
@@ -55,7 +71,7 @@ export default async function handler(req: any, res: any) {
     }
 
     try {
-      const r = await list({ prefix: 'leads/', ...blobAuth });
+      const r = await withBlobAuth((auth) => list({ prefix: 'leads/', ...auth }));
       const leads = (await Promise.all(r.blobs.map(async b => { try { return await read(b.url); } catch { return null; } }))).filter(Boolean);
       return send(res, 200, { leads });
     } catch (e) {
@@ -92,9 +108,9 @@ export default async function handler(req: any, res: any) {
         requirement: String(b.requirement || '').trim(),
         message: String(b.message || '').trim(),
       };
-      await put(p ? key(rawPhone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
-        access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...blobAuth,
-      });
+      await withBlobAuth((auth) => put(p ? key(rawPhone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
+        access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...auth,
+      }));
       return send(res, 200, { ok: true, lead, followUp: 'today', priority: priority(lead.timeline), nextAction: 'Call' });
     } catch (e) {
       console.error('leads POST error', e);
