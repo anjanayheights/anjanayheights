@@ -24,7 +24,9 @@ const META_PATH = 'crm/lead-meta.json';
 const DUPLICATE_WINDOW_MS = 60000;
 const MAX_WRITE_RETRIES = 3;
 const DEAL_FIELDS = ['dealValue','customerOffer','expectedClosingDate','closingProbability','negotiationNotes','closedDate','closedProperty','finalRemarks','sellerCommissionRate','buyerCommissionRate','commissionReceived','commissionStatus','commissionDueDate','commissionNotes','sellerPaymentDate','sellerPaymentMode','sellerReceiptNo','buyerPaymentDate','buyerPaymentMode','buyerReceiptNo','buyerName','buyerPhone','sellerName','sellerPhone','propertyId','propertyLocation','propertyArea','propertyBedrooms','paymentMode','receiptNo','paymentDate'];
-const blobAuth = { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
+const blobAuth = process.env.BLOB_READ_WRITE_TOKEN
+  ? { token: process.env.BLOB_READ_WRITE_TOKEN }
+  : { oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID };
 function getHeader(request: any, name: string) { const value = request?.headers?.[name.toLowerCase()]; return Array.isArray(value) ? value[0] || '' : value || ''; }
 function authorized(request: any) { const expected = process.env.DASHBOARD_PASSWORD || ''; return Boolean(expected && getHeader(request, 'authorization') === `Bearer ${expected}`); }
 function send(response: any, status: number, body: unknown) { return response.status(status).setHeader('Cache-Control', 'no-store, no-cache, must-revalidate').setHeader('Pragma', 'no-cache').json(body); }
