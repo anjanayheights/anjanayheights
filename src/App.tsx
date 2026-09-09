@@ -55,10 +55,15 @@ function unlockDashboardPasswordGate(password: string) {
   const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]'));
   inputs.forEach((input) => {
     if (!input.value) setControlledInputValue(input, password);
-    const form = input.closest('form');
-    const scope = form || input.parentElement?.parentElement || input.parentElement;
+    const scope = input.closest('form') || input.parentElement?.parentElement || input.parentElement;
     const button = scope?.querySelector<HTMLButtonElement>('button');
-    if (button && !button.disabled) button.click();
+    if (button && !button.disabled) {
+      // React state updates from the synthetic input event on the next tick.
+      // Wait before clicking so the child dashboard receives the shared session value.
+      window.setTimeout(() => {
+        if (!button.disabled) button.click();
+      }, 0);
+    }
   });
 }
 
@@ -69,17 +74,16 @@ function AdminSessionBridge({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
     let attempts = 0;
+    let timer = 0;
 
     const unlock = () => {
       if (cancelled) return;
       unlockDashboardPasswordGate(stored);
       attempts += 1;
-      if (attempts >= 20 || document.querySelectorAll('input[type="password"]').length === 0) {
-        window.clearInterval(timer);
-      }
+      if (attempts >= 40) window.clearInterval(timer);
     };
 
-    const timer = window.setInterval(unlock, 200);
+    timer = window.setInterval(unlock, 250);
     unlock();
 
     return () => {
