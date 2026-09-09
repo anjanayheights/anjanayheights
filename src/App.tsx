@@ -43,6 +43,7 @@ import Footer from './components/Footer';
 import WhatsAppButton from './components/WhatsAppButton';
 
 const CRM_SESSION_KEY = 'anjanay-heights-crm-password';
+const LEGACY_CRM_SESSION_KEY = 'crm_password';
 
 function setControlledInputValue(input: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
@@ -54,23 +55,24 @@ function setControlledInputValue(input: HTMLInputElement, value: string) {
 function unlockDashboardPasswordGate(password: string) {
   const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="password"]'));
   inputs.forEach((input) => {
-    if (!input.value) setControlledInputValue(input, password);
-    const scope = input.closest('form') || input.parentElement?.parentElement || input.parentElement;
-    const button = scope?.querySelector<HTMLButtonElement>('button');
-    if (button && !button.disabled) {
-      // React state updates from the synthetic input event on the next tick.
-      // Wait before clicking so the child dashboard receives the shared session value.
-      window.setTimeout(() => {
-        if (!button.disabled) button.click();
-      }, 0);
-    }
+    if (input.value !== password) setControlledInputValue(input, password);
+    // Give React time to commit the password state, then use the same Enter action
+    // the user would use. This works even when the dashboard's button is not a
+    // direct sibling of the password field.
+    window.setTimeout(() => {
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+    }, 60);
   });
 }
 
 function AdminSessionBridge({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    const stored = sessionStorage.getItem(CRM_SESSION_KEY) || '';
+    const stored = sessionStorage.getItem(CRM_SESSION_KEY) || sessionStorage.getItem(LEGACY_CRM_SESSION_KEY) || '';
     if (!stored) return;
+    // Keep both session keys compatible with older dashboard modules.
+    sessionStorage.setItem(CRM_SESSION_KEY, stored);
+    sessionStorage.setItem(LEGACY_CRM_SESSION_KEY, stored);
 
     let cancelled = false;
     let attempts = 0;
