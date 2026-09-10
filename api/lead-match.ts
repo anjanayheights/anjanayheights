@@ -1,0 +1,15 @@
+import { get, list } from '@vercel/blob';
+import { createHmac } from 'node:crypto';
+
+const candidates = [
+  ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }] : []),
+  ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
+];
+function header(req:any,n:string){const h=req?.headers;return h&&typeof h.get==='function'?h.get(n)||'':h?.[n.toLowerCase()]||h?.[n]||'';}
+function token(){const p=process.env.DASHBOARD_PASSWORD||'';return p?createHmac('sha256',p).update('anjanay-heights-crm-session').digest('hex'):'';}
+function authorized(req:any){const p=process.env.DASHBOARD_PASSWORD||'';const a=header(req,'authorization');const c=String(header(req,'cookie')||'').split(';').map((x:string)=>x.trim()).find((x:string)=>x.startsWith('ah_crm_session='))?.split('=').slice(1).join('=')||'';return Boolean((p&&a===`Bearer ${p}`)||(token()&&decodeURIComponent(c)===token()));}
+async function withAuth<T>(fn:(a:any)=>Promise<T>){let e:any;for(const a of [{},...candidates]){try{return await fn(a)}catch(x){e=x;if(!/access|token|credential|unauthorized|forbidden/i.test(String((x as any)?.message||x)))throw x}}throw e;}
+async function read(url:string){const r:any=await withAuth(a=>get(url,{access:'private',...a}));return r?.stream?await new Response(r.stream).json():null;}
+const norm=(v:any)=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ');
+function score(lead:any,p:any){let s=0;const l=norm(`${lead.property_type} ${lead.location} ${lead.budget} ${lead.requirement}`), q=norm(`${p.propertyType} ${p.location} ${p.title}`);if(lead.property_type&&q.includes(norm(lead.property_type)))s+=35;if(lead.location&&q.includes(norm(lead.location)))s+=35;if(lead.budget&&norm(p.price).includes(norm(lead.budget)))s+=20;if(!lead.budget||/under|lakh|crore|cr|50l|1cr|3cr|5cr/i.test(String(lead.budget)))s+=5;if(l&&q.split(' ').some((x:string)=>x.length>3&&l.includes(x)))s+=10;return Math.min(100,s);}
+export default async function handler(req:any,res:any){if(!authorized(req))return res.status(401).json({error:'Unauthorized'});try{const id=String(req?.query?.leadId||'');if(!id)return res.status(400).json({error:'leadId is required'});const lr=await withAuth(a=>list({prefix:'leads/',...a}));let lead:any=null;for(const b of lr.blobs){try{const x=await read(b.url);if(x?.id===id){lead=x;break}}catch{}}if(!lead)return res.status(404).json({error:'Lead not found'});const pr=await withAuth(a=>list({prefix:'properties/',...a}));const properties=(await Promise.all(pr.blobs.map(async b=>{try{return await read(b.url)}catch{return null}}))).filter(Boolean).filter((p:any)=>String(p.status||'Available').toLowerCase()!=='sold').map((p:any)=>({...p,matchScore:score(lead,p)})).sort((a:any,b:any)=>b.matchScore-a.matchScore).slice(0,10);return res.status(200).setHeader('Cache-Control','no-store').json({lead,properties});}catch(e){console.error('lead-match error',e);return res.status(500).json({error:'Unable to match properties.'});}}
