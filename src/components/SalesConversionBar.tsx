@@ -6,7 +6,7 @@ const CALL = 'tel:+919289771222';
 export default function SalesConversionBar() {
   const [show, setShow] = useState(false);
   useEffect(() => {
-    const onScroll = () => setShow(window.scrollY > 420);
+    const onScroll = () => setShow(window.scrollY > 280);
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
@@ -18,6 +18,7 @@ export default function SalesConversionBar() {
     <>
       <div className="fixed bottom-5 right-5 z-50 hidden md:flex flex-col gap-2">
         <a href={whatsapp} target="_blank" rel="noreferrer" className="rounded-full bg-[#25D366] px-5 py-3 text-sm font-bold text-white shadow-xl hover:scale-105 transition-transform">💬 WhatsApp Sales</a>
+        <a href="tel:+919289771222" className="rounded-full bg-white border border-slate-200 px-5 py-3 text-sm font-bold text-[#1A365D] shadow-xl hover:scale-105 transition-transform">📞 Call Sales</a>
         <a href="#contact" className="rounded-full bg-[#1A365D] px-5 py-3 text-sm font-bold text-white shadow-xl hover:scale-105 transition-transform">📅 Book Site Visit</a>
       </div>
       <div className={`fixed inset-x-0 bottom-0 z-50 md:hidden transition-transform duration-300 ${show ? 'translate-y-0' : 'translate-y-full'}`}>
