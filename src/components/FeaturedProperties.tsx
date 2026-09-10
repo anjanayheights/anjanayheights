@@ -26,6 +26,14 @@ const properties: Property[] = [
   { id: 'market-crc-joyous', name: 'CRC Joyous', type: 'Residential', location: 'Techzone 4, Greater Noida West', price: '₹1.32 Cr – ₹2.26 Cr', area: '1040 sq ft+', config: 'Residential flats', image: 'https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=900&q=80', source: SOURCE, sourceLabel: 'Housing.com', note: 'Indicative market price; availability to be reconfirmed.' },
   { id: 'market-godrej-arden', name: 'Godrej Arden', type: 'Residential', location: 'Sigma III, Greater Noida', price: '₹2.30 Cr – ₹4.40 Cr', area: '1375 sq ft+', config: 'Premium residences', image: 'https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=900&q=80', source: SOURCE, sourceLabel: 'Housing.com', note: 'Indicative market price; availability to be reconfirmed.' },
   { id: 'market-nbcc-aspire', name: 'NBCC Aspire Eternia Residences', type: 'Residential', location: 'Techzone 4, Greater Noida', price: '₹1.71 Cr – ₹2.33 Cr', area: '—', config: '3 & 4 BHK', image: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=900&q=80', source: 'https://www.magicbricks.com/residential-projects-in--greater-noida-nprid', sourceLabel: 'MagicBricks', note: 'Under construction; price/availability to be reconfirmed.' },
+
+  // Healthcare opportunities researched from current public listings. These are market leads,
+  // not Anjanay Heights-owned inventory; exact title, approvals, equipment and availability must be verified.
+  { id: 'market-hospital-gamma2', name: 'Fully Operational Hospital', type: 'Hospital', location: 'Gamma-2, Greater Noida', price: '₹40 Cr', area: '18,000 sq ft built-up', config: 'Operational hospital; B+3', image: 'https://images.unsplash.com/photo-1586773860418-d37222d8fce3?auto=format&fit=crop&w=900&q=80', source: 'https://roundspaces.com/property/🏥-fully-operational-hospital-for-sale-in-gamma-2-greater-noida/', sourceLabel: 'Roundspaces', note: 'Public listing updated Aug 2026; market lead only. Verify title, licences, equipment and current availability.' },
+  { id: 'market-hospital-gurgaon-106', name: '100 Beds Hospital', type: 'Hospital', location: 'Sector 106, Gurgaon', price: '₹100 Cr', area: '1.25 acres / ~32,500 sq ft covered', config: '100 beds; B+5', image: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=900&q=80', source: 'https://manchandarealtors.com/hospital-for-sale-in-gurgaon/', sourceLabel: 'Manchanda Realtors', note: 'Public listing; asking price is indicative. Verify CLU, title, approvals, equipment and current availability.' },
+  { id: 'market-hospital-faridabad-75', name: 'Hospital / Healthcare Land', type: 'Hospital', location: 'Sector 75, Faridabad', price: '₹60 Cr', area: '8,000 sq yd', config: 'Hospital / healthcare development', image: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=80', source: 'https://rockland-co.wixsite.com/india-business/hospital-sale-lease-management-land-building-healthcare-merger', sourceLabel: 'Public market listing', note: 'Public market listing; verify authority land-use, title, approvals and current availability.' },
+  { id: 'market-hospital-faridabad-76', name: 'Hospital / Healthcare Land', type: 'Hospital', location: 'Sector 76, Faridabad', price: '₹90 Cr', area: '12,000 sq yd', config: 'Hospital / healthcare development', image: 'https://images.unsplash.com/photo-1587351021759-3e566b6af7cc?auto=format&fit=crop&w=900&q=80', source: 'https://rockland-co.wixsite.com/india-business/hospital-sale-lease-management-land-building-healthcare-merger', sourceLabel: 'Public market listing', note: 'Public market listing; verify authority land-use, title, approvals and current availability.' },
+
   { id: 'direct-hospital-faridabad', name: '100 Beds Hospital', type: 'Hospital', location: 'Faridabad', price: '₹55 Cr', area: '3000 sq yard', config: '100 beds', image: 'https://images.unsplash.com/photo-1586773860418-d37222d8fce3?auto=format&fit=crop&w=900&q=80', source: '', sourceLabel: 'Anjanay Heights direct inventory', note: 'Direct inventory — contact sales for current availability.' },
   { id: 'direct-commercial-haridwar', name: '110 Bigha Commercial Land', type: 'Commercial Land', location: 'Haridwar', price: '₹47 Lakhs/Bigha', area: '110 Bigha', config: 'Commercial land', image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=900&q=80', source: '', sourceLabel: 'Anjanay Heights direct inventory', note: 'Direct inventory — contact sales for current availability.' },
   { id: 'direct-flat-greater-noida', name: '710 sq ft Flat', type: 'Flat', location: 'Sector 1, Aminabad, Greater Noida', price: '₹40 Lakhs', area: '710 sq ft', config: 'Flat', image: 'https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=900&q=80', source: '', sourceLabel: 'Anjanay Heights direct inventory', note: 'Direct inventory — contact sales for current availability.' },
@@ -46,10 +54,12 @@ export default function FeaturedProperties() {
     if (filterLocation !== 'All Locations' && !prop.location.includes(filterLocation)) return false;
     if (filterPrice !== 'All Prices') {
       const lower = prop.price.toLowerCase();
-      const under1 = lower.includes('47.99') || lower.includes('58.5') || lower.includes('64.99') || lower.includes('73.01') || lower.includes('40 lakhs');
+      const under1 = lower.includes('47.99') || lower.includes('58.5') || lower.includes('64.99') || lower.includes('73.01') || lower.includes('40 lakhs') || lower.includes('47 lakhs');
+      const mid = lower.includes('1.') || lower.includes('2.') || lower.includes('40 cr');
+      const above3 = lower.includes('3.') || lower.includes('4.') || lower.includes('55 cr') || lower.includes('60 cr') || lower.includes('90 cr') || lower.includes('100 cr');
       if (filterPrice === 'Under ₹1 Cr' && !under1) return false;
-      if (filterPrice === '₹1 Cr – ₹3 Cr' && !lower.includes('1.') && !lower.includes('2.')) return false;
-      if (filterPrice === 'Above ₹3 Cr' && !lower.includes('3.') && !lower.includes('4.') && !lower.includes('55 cr')) return false;
+      if (filterPrice === '₹1 Cr – ₹3 Cr' && !mid) return false;
+      if (filterPrice === 'Above ₹3 Cr' && !above3) return false;
     }
     return true;
   }), [filterType, filterLocation, filterPrice]);
@@ -59,13 +69,13 @@ export default function FeaturedProperties() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-6">
           <div className="border-l-4 border-[#C2A36B] pl-8 py-2">
-            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">Fresh property research + direct inventory</div>
+            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">Fresh property + healthcare opportunity research</div>
             <h2 className="text-3xl md:text-4xl font-serif text-[#1A365D] font-light">Properties Worth Enquiring About</h2>
-            <p className="mt-3 max-w-2xl text-sm text-gray-600">We research active NCR projects and keep direct listings here. Market prices are indicative — Anjanay Heights will confirm the exact unit, price and availability before your site visit.</p>
+            <p className="mt-3 max-w-2xl text-sm text-gray-600">We research active NCR projects and healthcare opportunities and keep direct listings here. Market prices are indicative — Anjanay Heights will confirm the exact property, price, approvals and availability before a site visit.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 bg-white p-4 border border-gray-200 shadow-sm">
             <select value={filterType} onChange={e => setFilterType(e.target.value)} className="px-4 py-2 bg-white border border-gray-200 text-sm text-[#1A365D]"><option>All Types</option><option>Residential</option><option>Villa</option><option>Flat</option><option>Hospital</option><option>Commercial Land</option></select>
-            <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="px-4 py-2 bg-white border border-gray-200 text-sm text-[#1A365D]"><option>All Locations</option><option>Noida Extension</option><option>Greater Noida West</option><option>Greater Noida</option><option>Faridabad</option><option>Haridwar</option></select>
+            <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="px-4 py-2 bg-white border border-gray-200 text-sm text-[#1A365D]"><option>All Locations</option><option>Noida Extension</option><option>Greater Noida West</option><option>Greater Noida</option><option>Gurgaon</option><option>Faridabad</option><option>Haridwar</option></select>
             <select value={filterPrice} onChange={e => setFilterPrice(e.target.value)} className="px-4 py-2 bg-white border border-gray-200 text-sm text-[#1A365D]"><option>All Prices</option><option>Under ₹1 Cr</option><option>₹1 Cr – ₹3 Cr</option><option>Above ₹3 Cr</option></select>
           </div>
         </div>
