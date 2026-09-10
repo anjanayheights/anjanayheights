@@ -1,4 +1,4 @@
-import { get, list, put } from '@vercel/blob';
+import { get, head, list, put } from '@vercel/blob';
 import { createHash, createHmac } from 'node:crypto';
 
 const blobAuthCandidates = [
@@ -52,8 +52,33 @@ function phone(v: string) {
 function key(v: string) {
   return `leads/phone-${createHash('sha256').update(phone(v)).digest('hex')}.json`;
 }
-function priority(t: string) {
-  return /immediate|urgent|today|asap|this week|within 7 days|within 1 week/i.test(String(t || '')) ? 'Hot' : 'Warm';
+function scoreLead(lead: any) {
+  let score = 0;
+  const text = [lead.property_type, lead.location, lead.budget, lead.timeline, lead.requirement, lead.message].join(' ').toLowerCase();
+  if (lead.phone) score += 10;
+  if (lead.email) score += 5;
+  if (/site visit|visit|immediate|urgent|today|asap|this week|within 7 days|within 1 week/.test(text)) score += 25;
+  if (/ready|cash|loan approved|approval/.test(text)) score += 20;
+  if (lead.budget) score += 15;
+  if (lead.location) score += 10;
+  if (lead.property_type) score += 10;
+  return Math.min(100, score);
+}
+function priority(score: number) {
+  return score >= 75 ? 'Very Hot' : score >= 55 ? 'Hot' : score >= 30 ? 'Warm' : 'Cold';
+}
+function istDate(offsetDays = 0) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const y = Number(parts.find(p => p.type === 'year')?.value);
+  const m = Number(parts.find(p => p.type === 'month')?.value) - 1;
+  const d = Number(parts.find(p => p.type === 'day')?.value);
+  const date = new Date(Date.UTC(y, m, d + offsetDays));
+  return date.toISOString().slice(0, 10);
+}
+function initialFollowUp(lead: any, score: number) {
+  const urgent = /site visit|visit|immediate|urgent|today|asap|this week|within 7 days|within 1 week/i.test([lead.timeline, lead.requirement, lead.message].join(' '));
+  const days = urgent || score >= 75 ? 0 : 1;
+  return `${istDate(days)}T${days === 0 ? '16:00' : '10:00'}`;
 }
 function isBlobAuthError(error: unknown) {
   const value = error as any;
@@ -77,16 +102,35 @@ async function read(url: string) {
   const r = await withBlobAuth((auth) => get(url, { access: 'private', ...auth }));
   return r?.statusCode === 200 && r.stream ? await new Response(r.stream).json() : null;
 }
+async function initializeMeta(lead: any, score: number) {
+  const path = 'crm/lead-meta.json';
+  try {
+    const info: any = await withBlobAuth((auth) => head(path, auth));
+    if (!info?.url) return;
+    const current = await read(info.url);
+    if (!current || typeof current !== 'object') return;
+    if (current[lead.id]) return;
+    const now = new Date().toISOString();
+    current[lead.id] = {
+      status: 'New', priority: priority(score), nextAction: 'Call', followUp: initialFollowUp(lead, score),
+      note: 'Automatically initialized from new lead intake.',
+      propertyType: lead.property_type || '', location: lead.location || '', budget: lead.budget || '', timeline: lead.timeline || '',
+      callHistory: [], history: [{ id: `auto-${lead.id}`, at: now, action: 'Lead Automation', note: `New lead scored ${score}/100 · ${priority(score)} · Call · follow-up ${initialFollowUp(lead, score)}.` }],
+    };
+    await withBlobAuth((auth) => put(path, JSON.stringify(current), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...auth }));
+  } catch (error) {
+    // Lead creation must remain successful even if CRM metadata initialization is temporarily unavailable.
+    console.error('lead automation initialization error', error);
+  }
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'GET') {
     if (!authorized(req)) return send(res, 401, { error: 'Unauthorized' });
-
     if (req?.query?._login === '1' || req?.query?._session === '1') {
       setSessionCookie(res);
       return send(res, 200, { ok: true });
     }
-
     try {
       const r = await withBlobAuth((auth) => list({ prefix: 'leads/', ...auth }));
       const leads = (await Promise.all(r.blobs.map(async b => { try { return await read(b.url); } catch { return null; } }))).filter(Boolean);
@@ -118,7 +162,11 @@ export default async function handler(req: any, res: any) {
       await withBlobAuth((auth) => put(p ? key(rawPhone) : `leads/${lead.id}.json`, JSON.stringify(lead), {
         access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...auth,
       }));
-      return send(res, 200, { ok: true, lead, followUp: 'today', priority: priority(lead.timeline), nextAction: 'Call' });
+      const score = scoreLead(lead);
+      const leadPriority = priority(score);
+      const followUp = initialFollowUp(lead, score);
+      await initializeMeta(lead, score);
+      return send(res, 200, { ok: true, lead, followUp, priority: leadPriority, score, nextAction: 'Call' });
     } catch (e) {
       console.error('leads POST error', e);
       return send(res, 500, { error: 'Unable to save your request.' });
