@@ -1,6 +1,6 @@
 import { get, head, list, put } from '@vercel/blob';
 import { createHash, createHmac } from 'node:crypto';
-import { notifyNewLead } from './push';
+import { notifyNewLead } from './push.js';
 
 const blobAuthCandidates = [
   ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
