@@ -1,6 +1,6 @@
 import webpush from 'web-push';
 import { createHmac } from 'node:crypto';
-import { head, get, list, put } from '@vercel/blob';
+import { get, list, put } from '@vercel/blob';
 
 const BLOB_PATH = 'crm/push-subscriptions.json';
 type Subscription = webpush.PushSubscription;
@@ -25,21 +25,17 @@ async function loadSubscriptions(): Promise<Subscription[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export async function notifyNewLead(lead: { id: string; name?: string; phone?: string; location?: string; budget?: string }, priority: string) {
+async function sendToSubscriptions(subscriptions: Subscription[], payload: Record<string, unknown>) {
   const publicKey = process.env.VAPID_PUBLIC_KEY || '';
   const privateKey = process.env.VAPID_PRIVATE_KEY || '';
   const subject = process.env.VAPID_SUBJECT || 'mailto:sales@anjanayheights.com';
   if (!publicKey || !privateKey) return { sent: 0, configured: false };
-  let subscriptions: Subscription[] = [];
-  try { subscriptions = await loadSubscriptions(); } catch (error) { console.error('push subscription load error', error); return { sent: 0, configured: true }; }
-  if (!subscriptions.length) return { sent: 0, configured: true };
   webpush.setVapidDetails(subject, publicKey, privateKey);
-  const body = `${lead.name || 'New lead'} • ${lead.phone || 'Phone not provided'}${lead.location ? `\n${lead.location}` : ''}${lead.budget ? `\nBudget: ${lead.budget}` : ''}\nPriority: ${priority}`;
   let sent = 0;
   const stale = new Set<string>();
   await Promise.all(subscriptions.map(async (subscription) => {
     try {
-      await webpush.sendNotification(subscription, JSON.stringify({ title: '🔔 New Anjanay Heights Lead', body, tag: `lead-${lead.id}`, url: '/admin/sales-engine' }));
+      await webpush.sendNotification(subscription, JSON.stringify(payload));
       sent += 1;
     } catch (error: any) {
       if (error?.statusCode === 404 || error?.statusCode === 410) stale.add(subscription.endpoint);
@@ -52,6 +48,14 @@ export async function notifyNewLead(lead: { id: string; name?: string; phone?: s
   return { sent, configured: true };
 }
 
+export async function notifyNewLead(lead: { id: string; name?: string; phone?: string; location?: string; budget?: string }, priority: string) {
+  let subscriptions: Subscription[] = [];
+  try { subscriptions = await loadSubscriptions(); } catch (error) { console.error('push subscription load error', error); return { sent: 0, configured: true }; }
+  if (!subscriptions.length) return { sent: 0, configured: true };
+  const body = `${lead.name || 'New lead'} • ${lead.phone || 'Phone not provided'}${lead.location ? `\n${lead.location}` : ''}${lead.budget ? `\nBudget: ${lead.budget}` : ''}\nPriority: ${priority}`;
+  return sendToSubscriptions(subscriptions, { title: '🔔 New Anjanay Heights Lead', body, tag: `lead-${lead.id}`, url: '/admin/sales-engine' });
+}
+
 export default async function handler(req: any, res: any) {
   if (!authorized(req)) return send(res, 401, { ok: false, error: 'Unauthorized' });
 
@@ -62,7 +66,27 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'Method not allowed' });
-  const subscription = req.body as Subscription;
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+  if (body.action === 'test') {
+    try {
+      const subscriptions = await loadSubscriptions();
+      if (!subscriptions.length) return send(res, 404, { ok: false, error: 'No push subscription is saved for this browser yet.' });
+      const result = await sendToSubscriptions(subscriptions, {
+        title: '🔔 Anjanay Heights Test Alert',
+        body: 'Lead alerts are working. A new lead notification will appear here immediately.',
+        tag: `lead-test-${Date.now()}`,
+        url: '/admin/sales-engine',
+      });
+      if (!result.sent) return send(res, 500, { ok: false, error: 'Push test could not be delivered. Browser subscription may have expired.' });
+      return send(res, 200, { ok: true, sent: result.sent });
+    } catch (error) {
+      console.error('push test error', error);
+      return send(res, 500, { ok: false, error: 'Push test failed.' });
+    }
+  }
+
+  const subscription = body as Subscription;
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) return send(res, 400, { ok: false, error: 'Invalid subscription' });
   try {
     const current = await loadSubscriptions();
