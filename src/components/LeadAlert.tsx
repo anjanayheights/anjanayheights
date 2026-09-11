@@ -50,6 +50,7 @@ async function enableWebPush() {
 export default function LeadAlert() {
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [pushReady, setPushReady] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [toast, setToast] = useState<Lead | null>(null);
   const initialized = useRef(false);
 
@@ -86,26 +87,53 @@ export default function LeadAlert() {
   }, []);
 
   const enable = async () => {
-    if (!('Notification' in window)) return;
+    if (!('Notification' in window)) {
+      alert('This browser does not support notifications. Please use the latest Chrome or Edge.');
+      return;
+    }
     try {
       if (Notification.permission === 'denied') {
         alert('Browser notifications are blocked for this site. Chrome site settings me Notifications → Allow karo, phir yahan dobara click karo.');
         return;
       }
-      const result = await Notification.requestPermission();
-      setPermission(result);
-      if (result !== 'granted') return;
+      if (Notification.permission !== 'granted') {
+        const result = await Notification.requestPermission();
+        setPermission(result);
+        if (result !== 'granted') return;
+      }
       await enableWebPush();
       setPushReady(true);
+      await testPush(true);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Lead push alerts could not be enabled.');
     }
   };
 
+  const testPush = async (silent = false) => {
+    if (!pushReady && !silent) {
+      await enable();
+      return;
+    }
+    setTesting(true);
+    try {
+      const response = await fetch('/api/push', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test' }), cache: 'no-store' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Test alert could not be delivered.');
+      if (!silent) alert('✅ Test alert sent. Agar notification nahi aayi, browser/site notification settings check karo.');
+    } catch (error) {
+      if (!silent) alert(error instanceof Error ? error.message : 'Test alert failed.');
+    } finally { setTesting(false); }
+  };
+
   return <>
-    {permission !== 'unsupported' && <button onClick={enable} title="Enable instant lead notifications" className="fixed bottom-20 right-4 z-[100] rounded-full border border-white/20 bg-[#1A365D] px-4 py-3 text-xs font-bold text-white shadow-xl hover:opacity-90">
-      {pushReady && permission === 'granted' ? '🔔 Lead Alerts On' : '🔔 Enable Lead Alerts'}
-    </button>}
+    <div className="fixed bottom-20 right-4 z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap justify-end gap-2">
+      <button onClick={() => testPush(false)} disabled={testing} title="Send a test lead notification" className="rounded-full border border-[#C2A36B] bg-white px-4 py-3 text-xs font-bold text-[#1A365D] shadow-xl hover:opacity-90 disabled:opacity-60">
+        {testing ? '⏳ Testing…' : '🧪 Test Alert'}
+      </button>
+      <button onClick={enable} title="Enable instant lead notifications" className="rounded-full border border-white/20 bg-[#1A365D] px-4 py-3 text-xs font-bold text-white shadow-xl hover:opacity-90">
+        {pushReady && permission === 'granted' ? '🔔 Lead Alerts On' : '🔔 Enable Lead Alerts'}
+      </button>
+    </div>
     {toast && <div className="fixed right-4 top-4 z-[110] w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-5 shadow-2xl border border-[#C2A36B]">
       <div className="text-[10px] font-bold uppercase tracking-widest text-[#C2A36B]">New Lead • Action Required</div>
       <div className="mt-2 text-lg font-semibold text-[#1A365D]">{toast.name || 'New enquiry'}</div>
