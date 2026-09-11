@@ -49,12 +49,13 @@ async function enableWebPush() {
 
 export default function LeadAlert() {
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
-  const [pushReady, setPushReady] = useState(localStorage.getItem(PUSH_ENABLED_KEY) === '1');
+  const [pushReady, setPushReady] = useState(false);
   const [toast, setToast] = useState<Lead | null>(null);
   const initialized = useRef(false);
 
   useEffect(() => {
     if ('Notification' in window) setPermission(Notification.permission);
+    setPushReady(localStorage.getItem(PUSH_ENABLED_KEY) === '1');
     const stored = localStorage.getItem(LAST_SEEN_KEY);
     if (!stored) localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString());
 
@@ -87,6 +88,10 @@ export default function LeadAlert() {
   const enable = async () => {
     if (!('Notification' in window)) return;
     try {
+      if (Notification.permission === 'denied') {
+        alert('Browser notifications are blocked for this site. Chrome site settings me Notifications → Allow karo, phir yahan dobara click karo.');
+        return;
+      }
       const result = await Notification.requestPermission();
       setPermission(result);
       if (result !== 'granted') return;
@@ -98,7 +103,9 @@ export default function LeadAlert() {
   };
 
   return <>
-    {(!pushReady || permission !== 'granted') && permission !== 'unsupported' && <button onClick={enable} className="fixed bottom-20 right-4 z-[100] rounded-full bg-[#1A365D] px-4 py-3 text-xs font-bold text-white shadow-xl hover:opacity-90">🔔 {pushReady ? 'Lead Alerts On' : 'Enable Lead Alerts'}</button>}
+    {permission !== 'unsupported' && <button onClick={enable} title="Enable instant lead notifications" className="fixed bottom-20 right-4 z-[100] rounded-full border border-white/20 bg-[#1A365D] px-4 py-3 text-xs font-bold text-white shadow-xl hover:opacity-90">
+      {pushReady && permission === 'granted' ? '🔔 Lead Alerts On' : '🔔 Enable Lead Alerts'}
+    </button>}
     {toast && <div className="fixed right-4 top-4 z-[110] w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-5 shadow-2xl border border-[#C2A36B]">
       <div className="text-[10px] font-bold uppercase tracking-widest text-[#C2A36B]">New Lead • Action Required</div>
       <div className="mt-2 text-lg font-semibold text-[#1A365D]">{toast.name || 'New enquiry'}</div>
