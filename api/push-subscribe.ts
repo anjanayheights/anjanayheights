@@ -1,13 +1,15 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { put, list } from '@vercel/blob';
 
 const BLOB_PATH = 'crm/push-subscriptions.json';
 
 type Subscription = { endpoint: string; expirationTime?: number | null; keys?: { p256dh: string; auth: string } };
+type RequestLike = { method?: string; headers: Record<string, string | string[] | undefined>; body?: unknown };
+type ResponseLike = { status(code: number): ResponseLike; json(value: unknown): unknown };
 
-function authorized(req: VercelRequest) {
+function authorized(req: RequestLike) {
   const expected = process.env.DASHBOARD_PASSWORD || '';
-  const header = req.headers.authorization || '';
+  const raw = req.headers.authorization;
+  const header = Array.isArray(raw) ? raw[0] || '' : raw || '';
   return Boolean(expected && header === `Bearer ${expected}`);
 }
 
@@ -22,7 +24,7 @@ async function loadSubscriptions(): Promise<Subscription[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: RequestLike, res: ResponseLike) {
   if (!authorized(req)) return res.status(401).json({ ok: false, error: 'Unauthorized' });
   if (req.method === 'GET') return res.status(200).json({ ok: true, subscriptions: await loadSubscriptions() });
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
