@@ -1,22 +1,27 @@
 import webpush from 'web-push';
 import { createHmac } from 'node:crypto';
-import { get, list, put } from '@vercel/blob';
+import { head, get, list, put } from '@vercel/blob';
 
 const BLOB_PATH = 'crm/push-subscriptions.json';
 type Subscription = webpush.PushSubscription;
 
+const blobAuthCandidates = [
+  ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID
+    ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }] : []),
+  ...(process.env.BLOB_READ_WRITE_TOKEN ? [{ token: process.env.BLOB_READ_WRITE_TOKEN }] : []),
+];
+
 function header(req: any, name: string) { const h = req?.headers; if (h && typeof h.get === 'function') return h.get(name) || ''; return h?.[name.toLowerCase()] || h?.[name] || ''; }
 function authorized(req: any) { const password = process.env.DASHBOARD_PASSWORD || ''; return Boolean(password && header(req, 'authorization') === `Bearer ${password}`); }
 function send(res: any, status: number, body: unknown) { return res.status(status).setHeader('Cache-Control', 'no-store').json(body); }
+function isBlobAuthError(error: unknown) { const value = error as any; return /BlobAccessError|access denied|valid token|credentials|unauthorized|forbidden/i.test(`${String(value?.name ?? value?.constructor?.name ?? '')} ${String(value?.message ?? '')}`); }
+async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) { let lastError: unknown = new Error('No Vercel Blob credentials configured.'); const attempts = [{}, ...blobAuthCandidates] as Record<string, string>[]; for (const auth of attempts) { try { return await operation(auth); } catch (error) { lastError = error; if (!isBlobAuthError(error)) throw error; } } throw lastError; }
+async function read(url: string) { const r = await withBlobAuth((auth) => get(url, { access: 'private', ...auth })); return r?.statusCode === 200 && r.stream ? await new Response(r.stream).json() : null; }
 
 async function loadSubscriptions(): Promise<Subscription[]> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return [];
-  const { blobs } = await list({ prefix: BLOB_PATH, token });
-  if (!blobs.length) return [];
-  const response = await fetch(blobs[0].url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!response.ok) return [];
-  const data = await response.json();
+  const result = await withBlobAuth((auth) => list({ prefix: BLOB_PATH, ...auth }));
+  if (!result.blobs.length) return [];
+  const data = await read(result.blobs[0].url);
   return Array.isArray(data) ? data : [];
 }
 
@@ -25,7 +30,8 @@ export async function notifyNewLead(lead: { id: string; name?: string; phone?: s
   const privateKey = process.env.VAPID_PRIVATE_KEY || '';
   const subject = process.env.VAPID_SUBJECT || 'mailto:sales@anjanayheights.com';
   if (!publicKey || !privateKey) return { sent: 0, configured: false };
-  const subscriptions = await loadSubscriptions();
+  let subscriptions: Subscription[] = [];
+  try { subscriptions = await loadSubscriptions(); } catch (error) { console.error('push subscription load error', error); return { sent: 0, configured: true }; }
   if (!subscriptions.length) return { sent: 0, configured: true };
   webpush.setVapidDetails(subject, publicKey, privateKey);
   const body = `${lead.name || 'New lead'} • ${lead.phone || 'Phone not provided'}${lead.location ? `\n${lead.location}` : ''}${lead.budget ? `\nBudget: ${lead.budget}` : ''}\nPriority: ${priority}`;
@@ -41,8 +47,7 @@ export async function notifyNewLead(lead: { id: string; name?: string; phone?: s
     }
   }));
   if (stale.size) {
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (token) await put(BLOB_PATH, JSON.stringify(subscriptions.filter((s) => !stale.has(s.endpoint))), { access: 'private', token, addRandomSuffix: false, contentType: 'application/json', allowOverwrite: true });
+    try { await withBlobAuth((auth) => put(BLOB_PATH, JSON.stringify(subscriptions.filter((s) => !stale.has(s.endpoint))), { access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: true, ...auth })); } catch (error) { console.error('push stale-subscription cleanup error', error); }
   }
   return { sent, configured: true };
 }
@@ -59,10 +64,13 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'Method not allowed' });
   const subscription = req.body as Subscription;
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) return send(res, 400, { ok: false, error: 'Invalid subscription' });
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return send(res, 503, { ok: false, error: 'Blob storage is not configured' });
-  const current = await loadSubscriptions();
-  const next = [...current.filter((item) => item.endpoint !== subscription.endpoint), subscription].slice(-100);
-  await put(BLOB_PATH, JSON.stringify(next), { access: 'private', token, addRandomSuffix: false, contentType: 'application/json', allowOverwrite: true });
-  return send(res, 200, { ok: true });
+  try {
+    const current = await loadSubscriptions();
+    const next = [...current.filter((item) => item.endpoint !== subscription.endpoint), subscription].slice(-100);
+    await withBlobAuth((auth) => put(BLOB_PATH, JSON.stringify(next), { access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: true, ...auth }));
+    return send(res, 200, { ok: true });
+  } catch (error) {
+    console.error('push subscription save error', error);
+    return send(res, 500, { ok: false, error: 'Could not save push subscription.' });
+  }
 }
