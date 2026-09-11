@@ -35,14 +35,14 @@ function base64ToUint8Array(value: string) {
 async function enableWebPush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push is not supported by this browser.');
   const headers = authHeaders();
-  const keyResponse = await fetch('/api/push-public-key', { headers, cache: 'no-store' });
+  const keyResponse = await fetch('/api/push', { headers, cache: 'no-store' });
   const keyData = await keyResponse.json();
   if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || 'Push notifications are not configured yet.');
   const registration = await navigator.serviceWorker.register('/lead-alert-sw.js');
   await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
   if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToUint8Array(keyData.publicKey) });
-  const save = await fetch('/api/push-subscribe', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON()) });
+  const save = await fetch('/api/push', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON()) });
   if (!save.ok) { const data = await save.json().catch(() => ({})); throw new Error(data.error || 'Could not save push subscription.'); }
   localStorage.setItem(PUSH_ENABLED_KEY, '1');
 }
