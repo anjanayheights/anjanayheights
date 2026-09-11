@@ -48,12 +48,53 @@ async function sendToSubscriptions(subscriptions: Subscription[], payload: Recor
   return { sent, configured: true };
 }
 
+async function sendWhatsAppLeadAlert(lead: { id: string; name?: string; phone?: string; location?: string; budget?: string }, priority: string) {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN || '';
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+  const alertRecipient = process.env.WHATSAPP_ALERT_RECIPIENT || '';
+  const templateName = process.env.WHATSAPP_LEAD_ALERT_TEMPLATE || '';
+  const language = process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en_US';
+  const version = process.env.WHATSAPP_GRAPH_VERSION || 'v23.0';
+  if (!token || !phoneNumberId || !alertRecipient || !templateName) return { sent: false, configured: false };
+
+  const variables = [
+    lead.name || 'New lead',
+    lead.phone || 'Not provided',
+    lead.location || 'Not specified',
+    lead.budget || 'Not specified',
+    priority,
+  ];
+  const response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: alertRecipient.replace(/\D/g, ''),
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: language },
+        components: [{ type: 'body', parameters: variables.map((text) => ({ type: 'text', text: String(text) })) }],
+      },
+    }),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    console.error('WhatsApp lead alert failed', response.status, detail.slice(0, 500));
+    return { sent: false, configured: true, status: response.status };
+  }
+  return { sent: true, configured: true };
+}
+
 export async function notifyNewLead(lead: { id: string; name?: string; phone?: string; location?: string; budget?: string }, priority: string) {
-  let subscriptions: Subscription[] = [];
-  try { subscriptions = await loadSubscriptions(); } catch (error) { console.error('push subscription load error', error); return { sent: 0, configured: true }; }
-  if (!subscriptions.length) return { sent: 0, configured: true };
   const body = `${lead.name || 'New lead'} • ${lead.phone || 'Phone not provided'}${lead.location ? `\n${lead.location}` : ''}${lead.budget ? `\nBudget: ${lead.budget}` : ''}\nPriority: ${priority}`;
-  return sendToSubscriptions(subscriptions, { title: '🔔 New Anjanay Heights Lead', body, tag: `lead-${lead.id}`, url: '/admin/sales-engine' });
+  const whatsapp = await sendWhatsAppLeadAlert(lead, priority).catch((error) => { console.error('WhatsApp lead alert error', error); return { sent: false, configured: true }; });
+
+  let subscriptions: Subscription[] = [];
+  try { subscriptions = await loadSubscriptions(); } catch (error) { console.error('push subscription load error', error); return { sent: 0, configured: true, whatsapp }; }
+  if (!subscriptions.length) return { sent: 0, configured: true, whatsapp };
+  const push = await sendToSubscriptions(subscriptions, { title: '🔔 New Anjanay Heights Lead', body, tag: `lead-${lead.id}`, url: '/admin/sales-engine' });
+  return { ...push, whatsapp };
 }
 
 export default async function handler(req: any, res: any) {
