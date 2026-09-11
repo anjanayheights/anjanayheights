@@ -32,18 +32,54 @@ function base64ToUint8Array(value: string) {
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
 }
 
+async function resetPushRegistration() {
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const registration of registrations) {
+      if (registration.active?.scriptURL.includes('/lead-alert-sw.js') || registration.scope.includes('/')) {
+        const subscription = await registration.pushManager.getSubscription().catch(() => null);
+        await subscription?.unsubscribe().catch(() => false);
+        if (registration.active?.scriptURL.includes('/lead-alert-sw.js')) await registration.unregister();
+      }
+    }
+  } catch { /* best effort */ }
+  localStorage.removeItem(PUSH_ENABLED_KEY);
+}
+
 async function enableWebPush() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push is not supported by this browser.');
+  if (!window.isSecureContext) throw new Error('Push alerts require the secure HTTPS website. Open the Anjanay Heights Vercel site, not an HTTP preview.');
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push is not supported by this browser. Please use the latest Chrome or Edge.');
   const headers = authHeaders();
-  const keyResponse = await fetch('/api/push', { headers, cache: 'no-store' });
-  const keyData = await keyResponse.json();
-  if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || 'Push notifications are not configured yet.');
-  const registration = await navigator.serviceWorker.register('/lead-alert-sw.js');
+  let keyResponse: Response;
+  try {
+    keyResponse = await fetch('/api/push', { headers, cache: 'no-store' });
+  } catch {
+    throw new Error('CRM alert server could not be reached. Please check your internet connection and refresh the CRM.');
+  }
+  const keyData = await keyResponse.json().catch(() => ({}));
+  if (!keyResponse.ok || !keyData.publicKey) throw new Error(keyData.error || `Push server returned ${keyResponse.status}.`);
+  let publicKey: Uint8Array;
+  try { publicKey = base64ToUint8Array(String(keyData.publicKey)); } catch { throw new Error('Push server returned an invalid notification key.'); }
+  if (publicKey.length !== 65) throw new Error('Push notification key is invalid. Please reset Lead Alerts and try again.');
+
+  const registration = await navigator.serviceWorker.register('/lead-alert-sw.js', { scope: '/' });
   await navigator.serviceWorker.ready;
   let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToUint8Array(keyData.publicKey) });
-  const save = await fetch('/api/push', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON()) });
-  if (!save.ok) { const data = await save.json().catch(() => ({})); throw new Error(data.error || 'Could not save push subscription.'); }
+  try {
+    if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey });
+  } catch (error) {
+    const message = String(error instanceof Error ? error.message : error);
+    if (/failed to fetch|applicationserverkey|invalid/i.test(message)) {
+      await resetPushRegistration();
+      const retryRegistration = await navigator.serviceWorker.register('/lead-alert-sw.js', { scope: '/' });
+      await navigator.serviceWorker.ready;
+      subscription = await retryRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey });
+    } else throw error;
+  }
+  if (!subscription) throw new Error('Chrome could not create the push subscription. Please retry Lead Alerts.');
+  const save = await fetch('/api/push', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(subscription.toJSON()), cache: 'no-store' });
+  const saveData = await save.json().catch(() => ({}));
+  if (!save.ok) throw new Error(saveData.error || `Could not save push subscription (${save.status}).`);
   localStorage.setItem(PUSH_ENABLED_KEY, '1');
 }
 
@@ -51,6 +87,7 @@ export default function LeadAlert() {
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [pushReady, setPushReady] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [toast, setToast] = useState<Lead | null>(null);
   const initialized = useRef(false);
 
@@ -87,15 +124,9 @@ export default function LeadAlert() {
   }, []);
 
   const enable = async () => {
-    if (!('Notification' in window)) {
-      alert('This browser does not support notifications. Please use the latest Chrome or Edge.');
-      return;
-    }
+    if (!('Notification' in window)) { alert('This browser does not support notifications. Please use the latest Chrome or Edge.'); return; }
     try {
-      if (Notification.permission === 'denied') {
-        alert('Browser notifications are blocked for this site. Chrome site settings me Notifications → Allow karo, phir yahan dobara click karo.');
-        return;
-      }
+      if (Notification.permission === 'denied') { alert('Browser notifications are blocked for this site. Chrome site settings me Notifications → Allow karo, phir yahan dobara click karo.'); return; }
       if (Notification.permission !== 'granted') {
         const result = await Notification.requestPermission();
         setPermission(result);
@@ -109,30 +140,28 @@ export default function LeadAlert() {
     }
   };
 
+  const resetAndEnable = async () => {
+    setResetting(true);
+    try { await resetPushRegistration(); setPushReady(false); await enable(); }
+    finally { setResetting(false); }
+  };
+
   const testPush = async (silent = false) => {
-    if (!pushReady && !silent) {
-      await enable();
-      return;
-    }
+    if (!pushReady && !silent) { await enable(); return; }
     setTesting(true);
     try {
       const response = await fetch('/api/push', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'test' }), cache: 'no-store' });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Test alert could not be delivered.');
-      if (!silent) alert('✅ Test alert sent. Agar notification nahi aayi, browser/site notification settings check karo.');
-    } catch (error) {
-      if (!silent) alert(error instanceof Error ? error.message : 'Test alert failed.');
-    } finally { setTesting(false); }
+      if (!response.ok) throw new Error(data.error || `Test alert failed (${response.status}).`);
+      if (!silent) alert('✅ Test alert sent. Agar notification nahi aayi, Chrome site notification settings check karo.');
+    } catch (error) { if (!silent) alert(error instanceof Error ? error.message : 'Test alert failed.'); }
+    finally { setTesting(false); }
   };
 
   return <>
     <div className="fixed bottom-20 right-4 z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap justify-end gap-2">
-      <button onClick={() => testPush(false)} disabled={testing} title="Send a test lead notification" className="rounded-full border border-[#C2A36B] bg-white px-4 py-3 text-xs font-bold text-[#1A365D] shadow-xl hover:opacity-90 disabled:opacity-60">
-        {testing ? '⏳ Testing…' : '🧪 Test Alert'}
-      </button>
-      <button onClick={enable} title="Enable instant lead notifications" className="rounded-full border border-white/20 bg-[#1A365D] px-4 py-3 text-xs font-bold text-white shadow-xl hover:opacity-90">
-        {pushReady && permission === 'granted' ? '🔔 Lead Alerts On' : '🔔 Enable Lead Alerts'}
-      </button>
+      <button onClick={() => testPush(false)} disabled={testing || resetting} title="Send a test lead notification" className="rounded-full border border-[#C2A36B] bg-white px-4 py-3 text-xs font-bold text-[#1A365D] shadow-xl hover:opacity-90 disabled:opacity-60">{testing ? '⏳ Testing…' : '🧪 Test Alert'}</button>
+      <button onClick={resetAndEnable} disabled={resetting} title="Reset Chrome push subscription and enable alerts again" className="rounded-full border border-white/20 bg-[#1A365D] px-4 py-3 text-xs font-bold text-white shadow-xl hover:opacity-90 disabled:opacity-60">{resetting ? '⏳ Resetting…' : pushReady && permission === 'granted' ? '🔔 Lead Alerts On' : '🔔 Enable Lead Alerts'}</button>
     </div>
     {toast && <div className="fixed right-4 top-4 z-[110] w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-5 shadow-2xl border border-[#C2A36B]">
       <div className="text-[10px] font-bold uppercase tracking-widest text-[#C2A36B]">New Lead • Action Required</div>
