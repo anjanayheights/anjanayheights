@@ -22,6 +22,7 @@ function priority(score: number) { return score >= 75 ? 'Very Hot' : score >= 55
 function istDate(offsetDays = 0) { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()); const y = Number(parts.find(p => p.type === 'year')?.value); const m = Number(parts.find(p => p.type === 'month')?.value) - 1; const d = Number(parts.find(p => p.type === 'day')?.value); return new Date(Date.UTC(y, m, d + offsetDays)).toISOString().slice(0, 10); }
 function initialFollowUp(lead: any, score: number) { const urgent = /site visit|visit|immediate|urgent|today|asap|this week|within 7 days|within 1 week/i.test([lead.timeline, lead.requirement, lead.message].join(' ')); const days = urgent || score >= 75 ? 0 : 1; return `${istDate(days)}T${days === 0 ? '16:00' : '10:00'}`; }
 function isBlobAuthError(error: unknown) { const value = error as any; return /BlobAccessError|access denied|valid token|credentials|unauthorized|forbidden/i.test(`${String(value?.name ?? value?.constructor?.name ?? '')} ${String(value?.message ?? '')}`); }
+function isBlobAlreadyExistsError(error: unknown) { const value = error as any; return /already exists|allowOverwrite|BlobError/i.test(`${String(value?.name ?? value?.constructor?.name ?? '')} ${String(value?.message ?? '')}`); }
 async function withBlobAuth<T>(operation: (auth: Record<string, string>) => Promise<T>) { let lastError: unknown = new Error('No Vercel Blob credentials configured.'); const attempts = [{}, ...blobAuthCandidates] as Record<string, string>[]; for (const auth of attempts) { try { return await operation(auth); } catch (error) { lastError = error; if (!isBlobAuthError(error)) throw error; } } throw lastError; }
 async function read(url: string) { const r = await withBlobAuth((auth) => get(url, { access: 'private', ...auth })); return r?.statusCode === 200 && r.stream ? await new Response(r.stream).json() : null; }
 async function initializeMeta(lead: any, score: number) { const path = 'crm/lead-meta.json'; try { const info: any = await withBlobAuth((auth) => head(path, auth)); if (!info?.url) return; const current = await read(info.url); if (!current || typeof current !== 'object' || current[lead.id]) return; const now = new Date().toISOString(); current[lead.id] = { status: 'New', priority: priority(score), nextAction: 'Call', followUp: initialFollowUp(lead, score), note: 'Automatically initialized from new lead intake.', propertyType: lead.property_type || '', location: lead.location || '', budget: lead.budget || '', timeline: lead.timeline || '', callHistory: [], history: [{ id: `auto-${lead.id}`, at: now, action: 'Lead Automation', note: `New lead scored ${score}/100 · ${priority(score)} · Call · follow-up ${initialFollowUp(lead, score)}.` }] }; await withBlobAuth((auth) => put(path, JSON.stringify(current), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...auth })); } catch (error) { console.error('lead automation initialization error', error); } }
@@ -38,11 +39,20 @@ export default async function handler(req: any, res: any) {
       const name = String(b.name || '').trim(); const rawPhone = String(b.phone || '').trim(); if (!name || !rawPhone) return send(res, 400, { error: 'Name and phone are required.' });
       const q = req?.query || {};
       const lead = { id: crypto.randomUUID(), created_at: new Date().toISOString(), name, phone: rawPhone, email: String(b.email || '').trim(), form_name: String(b['form-name'] || 'property-lead'), lead_type: String(b.lead_type || ''), source: String(b.source || b.lead_source || 'Website'), utm_source: String(b.utm_source || q.utm_source || '').trim(), utm_medium: String(b.utm_medium || q.utm_medium || '').trim(), utm_campaign: String(b.utm_campaign || q.utm_campaign || '').trim(), property_type: String(b.property_type || '').trim(), location: String(b.location || '').trim(), budget: String(b.budget || '').trim(), timeline: String(b.timeline || '').trim(), requirement: String(b.requirement || '').trim(), message: String(b.message || '').trim() };
-      await withBlobAuth((auth) => put(key(rawPhone), JSON.stringify(lead), { access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...auth }));
-      const score = scoreLead(lead); const leadPriority = priority(score); const followUp = initialFollowUp(lead, score);
-      await initializeMeta(lead, score);
-      try { await notifyNewLead(lead, leadPriority); } catch (error) { console.error('lead push delivery error', error); }
-      return send(res, 200, { ok: true, lead, followUp, priority: leadPriority, score, nextAction: 'Call' });
+      let savedLead = lead;
+      try {
+        await withBlobAuth((auth) => put(key(rawPhone), JSON.stringify(lead), { access: 'private', addRandomSuffix: false, contentType: 'application/json', allowOverwrite: false, ...auth }));
+      } catch (error) {
+        if (!isBlobAlreadyExistsError(error)) throw error;
+        const existing = await withBlobAuth((auth) => head(key(rawPhone), auth));
+        if (!existing?.url) throw error;
+        const existingLead = await read(existing.url);
+        if (existingLead && typeof existingLead === 'object') savedLead = existingLead;
+      }
+      const score = scoreLead(savedLead); const leadPriority = priority(score); const followUp = initialFollowUp(savedLead, score);
+      await initializeMeta(savedLead, score);
+      try { await notifyNewLead(savedLead, leadPriority); } catch (error) { console.error('lead push delivery error', error); }
+      return send(res, 200, { ok: true, lead: savedLead, followUp, priority: leadPriority, score, nextAction: 'Call', duplicate: savedLead.id !== lead.id });
     } catch (e) { console.error('leads POST error', e); return send(res, 500, { error: 'Unable to save your request.' }); }
   }
   return send(res, 405, { error: 'Method not allowed' });
