@@ -1,6 +1,7 @@
 import { list, put } from '@vercel/blob';
 
 const PREFIX = 'analytics/visitors/';
+const ACTIVE_WINDOW_MS = 90_000;
 
 function send(response: any, status: number, body: unknown) {
   return response.status(status).setHeader('Cache-Control', 'no-store').json(body);
@@ -12,21 +13,34 @@ function cookieValue(request: any, name: string) {
   return match ? decodeURIComponent(match.slice(name.length + 1)) : '';
 }
 
-async function countVisitors() {
-  let total = 0;
+async function readVisitors() {
+  const visitors: Array<{ id: string; lastSeen?: string; firstSeen?: string }> = [];
   let cursor: string | undefined;
   do {
     const page = await list({ prefix: PREFIX, cursor });
-    total += page.blobs?.length || 0;
+    for (const blob of page.blobs || []) {
+      try {
+        const response = await fetch(blob.url, { cache: 'no-store' });
+        if (response.ok) visitors.push(await response.json());
+      } catch {
+        // Ignore an individual analytics record and continue counting.
+      }
+    }
     cursor = page.hasMore ? page.cursor : undefined;
   } while (cursor);
-  return total;
+  return visitors;
 }
 
 export default async function handler(request: any, response: any) {
   try {
     if (request.method === 'GET') {
-      return send(response, 200, { totalViewers: await countVisitors() });
+      const visitors = await readVisitors();
+      const now = Date.now();
+      const active = visitors.filter((visitor) => {
+        const lastSeen = Date.parse(visitor.lastSeen || visitor.firstSeen || '');
+        return Number.isFinite(lastSeen) && now - lastSeen <= ACTIVE_WINDOW_MS;
+      }).length;
+      return send(response, 200, { totalViewers: visitors.length, activeVisitors: active });
     }
 
     if (request.method === 'POST') {
@@ -39,13 +53,12 @@ export default async function handler(request: any, response: any) {
       }
 
       const blobName = `${PREFIX}${visitorId}.json`;
-      await put(blobName, JSON.stringify({ id: visitorId, firstSeen: new Date().toISOString() }), {
+      const now = new Date().toISOString();
+      await put(blobName, JSON.stringify({ id: visitorId, firstSeen: now, lastSeen: now }), {
         access: 'private',
         addRandomSuffix: false,
-        allowOverwrite: false,
+        allowOverwrite: true,
         contentType: 'application/json',
-      }).catch((error: any) => {
-        if (!String(error?.message || '').toLowerCase().includes('exist')) throw error;
       });
 
       if (isNew) {
