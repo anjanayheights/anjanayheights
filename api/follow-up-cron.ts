@@ -1,4 +1,5 @@
 import { get, list, put } from '@vercel/blob';
+import { notifyFollowUpReminder } from './follow-up-push';
 
 const blobAuthCandidates = [
   ...(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID ? [{ oidcToken: process.env.VERCEL_OIDC_TOKEN, storeId: process.env.BLOB_STORE_ID }] : []),
@@ -116,6 +117,15 @@ export default async function handler(request: any, response: any) {
       await withBlobAuth((auth) => put('crm/lead-meta.json', JSON.stringify(changedMeta), { access: 'private', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', ...auth }));
     }
 
+    // Push the actionable queue once per scheduled run. The notification deep-links directly to the lead.
+    const notificationItems = [
+      ...overdue.map(({ lead, meta: itemMeta }: any) => ({ id: lead.id, name: lead.name, phone: lead.phone, priority: itemMeta.priority || priority(scoreLead(lead, itemMeta)), nextAction: itemMeta.nextAction || 'Call', followUp: itemMeta.followUp, overdue: true })),
+      ...todayQueue.filter(({ meta: itemMeta }: any) => !overdue.some(({ lead }: any) => lead.id === itemMeta.id)).map(({ lead, meta: itemMeta }: any) => ({ id: lead.id, name: lead.name, phone: lead.phone, priority: itemMeta.priority || priority(scoreLead(lead, itemMeta)), nextAction: itemMeta.nextAction || 'Call', followUp: itemMeta.followUp })),
+      ...siteVisitReminders.map(({ lead, meta: itemMeta }: any) => ({ id: lead.id, name: lead.name, phone: lead.phone, priority: itemMeta.priority || priority(scoreLead(lead, itemMeta)), nextAction: itemMeta.nextAction || 'Confirm Site Visit', followUp: itemMeta.followUp, siteVisit: true })),
+    ];
+    const notificationResults = await Promise.all(notificationItems.map((item: any) => notifyFollowUpReminder(item).catch((error) => { console.error('follow-up notification error', error); return { sent: 0, configured: false }; })));
+    const notificationsSent = notificationResults.reduce((sum: number, item: any) => sum + Number(item?.sent || 0), 0);
+
     const secretConfigured = Boolean(process.env.CRON_SECRET);
     return send(response, 200, {
       ok: true,
@@ -128,6 +138,7 @@ export default async function handler(request: any, response: any) {
       totalLeads: leads.length,
       activeLeads: active.length,
       backfilled,
+      notificationsSent,
       generatedAt: new Date().toISOString(),
       ...(secretConfigured ? {
         due: due.map(({ lead, meta: itemMeta }: any) => ({ id: lead.id, name: lead.name || '', phone: lead.phone || '', source: lead.source || '', priority: itemMeta.priority || priority(scoreLead(lead, itemMeta)), nextAction: itemMeta.nextAction || 'Call', followUp: itemMeta.followUp || '', note: itemMeta.note || '' })),
