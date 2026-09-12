@@ -1,8 +1,23 @@
 import { useEffect } from 'react';
 
+const HEARTBEAT_MS = 30_000;
+
 export default function VisitorTracker() {
   useEffect(() => {
-    fetch('/api/visitor', { method: 'POST', keepalive: true }).catch(() => {});
+    let stopped = false;
+
+    const ping = () => {
+      if (stopped) return;
+      fetch('/api/visitor', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
+    };
+
+    ping();
+    const timer = window.setInterval(ping, HEARTBEAT_MS);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   return null;
